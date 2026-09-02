@@ -1,0 +1,1139 @@
+{
+  "agents": [
+    {
+      "id": "chief_of_staff",
+      "name": "Chief of Staff",
+      "department": "Executive",
+      "level": "executive",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "tickets",
+        "rag"
+      ],
+      "activation": "always",
+      "reports_to": null
+    },
+    {
+      "id": "cto",
+      "name": "Chief Technology Officer",
+      "department": "Executive",
+      "level": "executive",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "rag",
+        "architecture"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "cpo",
+      "name": "Chief Product Officer",
+      "department": "Executive",
+      "level": "executive",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "rag"
+      ],
+      "activation": "large",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "product_director",
+      "name": "Director of Product",
+      "department": "Product",
+      "level": "director",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "product_manager",
+      "name": "Product Manager",
+      "department": "Product",
+      "level": "manager",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "rag"
+      ],
+      "activation": "always",
+      "reports_to": "product_director"
+    },
+    {
+      "id": "research_advisor",
+      "name": "Research Advisor",
+      "department": "Advisory Board",
+      "level": "advisor",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "web",
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "architecture_advisor",
+      "name": "Architecture Advisor",
+      "department": "Advisory Board",
+      "level": "advisor",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "cto"
+    },
+    {
+      "id": "security_advisor",
+      "name": "Security Advisor",
+      "department": "Advisory Board",
+      "level": "advisor",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "security",
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "ux_advisor",
+      "name": "UX Advisor",
+      "department": "Advisory Board",
+      "level": "advisor",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "design",
+        "rag"
+      ],
+      "activation": "large",
+      "reports_to": "cpo"
+    },
+    {
+      "id": "accessibility_advisor",
+      "name": "Accessibility Advisor",
+      "department": "Advisory Board",
+      "level": "advisor",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "design",
+        "qa"
+      ],
+      "activation": "large",
+      "reports_to": "cpo"
+    },
+    {
+      "id": "oss_advisor",
+      "name": "Open Source & Licensing Advisor",
+      "department": "Advisory Board",
+      "level": "advisor",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "dependencies",
+        "rag"
+      ],
+      "activation": "large",
+      "reports_to": "cto"
+    },
+    {
+      "id": "engineering_director",
+      "name": "Director of Engineering",
+      "department": "Engineering",
+      "level": "director",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "git",
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "cto"
+    },
+    {
+      "id": "software_architect",
+      "name": "Software Architect",
+      "department": "Engineering",
+      "level": "principal",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "filesystem_read",
+        "context7",
+        "rag"
+      ],
+      "activation": "always",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "security_director",
+      "name": "Director of Application Security",
+      "department": "Security",
+      "level": "director",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "security",
+        "git_read",
+        "tickets"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "appsec_engineer",
+      "name": "Application Security Engineer",
+      "department": "Security",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "security",
+        "filesystem_read",
+        "tickets"
+      ],
+      "activation": "always",
+      "reports_to": "security_director"
+    },
+    {
+      "id": "qa_director",
+      "name": "Director of Quality Engineering",
+      "department": "Quality",
+      "level": "director",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "qa",
+        "project"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "qa_engineer",
+      "name": "QA Engineer",
+      "department": "Quality",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "qa",
+        "tickets"
+      ],
+      "activation": "always",
+      "reports_to": "qa_director"
+    },
+    {
+      "id": "incident_manager",
+      "name": "Incident Manager",
+      "department": "Operations",
+      "level": "manager",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "tickets",
+        "rag",
+        "git_read"
+      ],
+      "activation": "always",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "service_desk",
+      "name": "Service Desk Coordinator",
+      "department": "Operations",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "tickets"
+      ],
+      "activation": "medium",
+      "reports_to": "incident_manager"
+    },
+    {
+      "id": "release_manager",
+      "name": "Release Manager",
+      "department": "Release",
+      "level": "manager",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "git",
+        "github",
+        "project"
+      ],
+      "activation": "always",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "portfolio_manager",
+      "name": "Portfolio & Documentation Manager",
+      "department": "Release",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "github",
+        "filesystem_write",
+        "project"
+      ],
+      "activation": "medium",
+      "reports_to": "release_manager"
+    },
+    {
+      "id": "github_intake",
+      "name": "GitHub Community Intake",
+      "department": "Operations",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "github_issues",
+        "tickets"
+      ],
+      "activation": "medium",
+      "reports_to": "incident_manager"
+    },
+    {
+      "id": "uiux_director",
+      "name": "Director of Product Design",
+      "department": "Design",
+      "level": "director",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "design",
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "uiux_designer",
+      "name": "UI/UX Designer",
+      "department": "Design",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "penpot",
+        "rag",
+        "approvals"
+      ],
+      "activation": "always",
+      "reports_to": "uiux_director"
+    },
+    {
+      "id": "visual_asset_designer",
+      "name": "Visual Asset Designer",
+      "department": "Design",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "design",
+        "approvals"
+      ],
+      "activation": "medium",
+      "reports_to": "uiux_director"
+    },
+    {
+      "id": "apple_eng_manager",
+      "name": "Apple Platforms Engineering Manager",
+      "department": "Engineering",
+      "level": "manager",
+      "project_types": [
+        "ios",
+        "macos",
+        "fullstack"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "xcode"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "swift_engineer",
+      "name": "Swift/SwiftUI Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "fullstack"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "xcode",
+        "context7"
+      ],
+      "activation": "always",
+      "reports_to": "apple_eng_manager"
+    },
+    {
+      "id": "apple_debugger",
+      "name": "Apple Platform Debugger",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "fullstack"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "xcode",
+        "rag"
+      ],
+      "activation": "always",
+      "reports_to": "apple_eng_manager"
+    },
+    {
+      "id": "apple_qa",
+      "name": "iOS/macOS QA Engineer",
+      "department": "Quality",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "fullstack"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "xcode",
+        "simulator",
+        "tickets"
+      ],
+      "activation": "always",
+      "reports_to": "qa_director"
+    },
+    {
+      "id": "apple_perf",
+      "name": "Apple Performance Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "xcode",
+        "profiling"
+      ],
+      "activation": "large",
+      "reports_to": "apple_eng_manager"
+    },
+    {
+      "id": "web_eng_manager",
+      "name": "Web Engineering Manager",
+      "department": "Engineering",
+      "level": "manager",
+      "project_types": [
+        "web",
+        "fullstack"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "frontend_engineer",
+      "name": "Frontend Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "web",
+        "fullstack"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "context7",
+        "playwright"
+      ],
+      "activation": "always",
+      "reports_to": "web_eng_manager"
+    },
+    {
+      "id": "backend_engineer",
+      "name": "Backend/API Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "web",
+        "fullstack",
+        "android",
+        "ios",
+        "game",
+        "ai_ml"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "context7"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "database_engineer",
+      "name": "Database Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "web",
+        "fullstack",
+        "android",
+        "ios",
+        "game",
+        "ai_ml"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "web_qa",
+      "name": "Web QA / Browser Automation Engineer",
+      "department": "Quality",
+      "level": "specialist",
+      "project_types": [
+        "web",
+        "fullstack"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "playwright",
+        "tickets"
+      ],
+      "activation": "always",
+      "reports_to": "qa_director"
+    },
+    {
+      "id": "web_perf_seo",
+      "name": "Web Performance & SEO Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "web",
+        "fullstack"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "playwright",
+        "web"
+      ],
+      "activation": "medium",
+      "reports_to": "web_eng_manager"
+    },
+    {
+      "id": "android_eng_manager",
+      "name": "Android Engineering Manager",
+      "department": "Engineering",
+      "level": "manager",
+      "project_types": [
+        "android"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "kotlin_engineer",
+      "name": "Kotlin/Compose Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "android"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "context7"
+      ],
+      "activation": "always",
+      "reports_to": "android_eng_manager"
+    },
+    {
+      "id": "android_qa",
+      "name": "Android QA Engineer",
+      "department": "Quality",
+      "level": "specialist",
+      "project_types": [
+        "android"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "qa",
+        "tickets"
+      ],
+      "activation": "always",
+      "reports_to": "qa_director"
+    },
+    {
+      "id": "game_director",
+      "name": "Game Director",
+      "department": "Product",
+      "level": "director",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "design"
+      ],
+      "activation": "medium",
+      "reports_to": "chief_of_staff"
+    },
+    {
+      "id": "game_eng_manager",
+      "name": "Game Engineering Manager",
+      "department": "Engineering",
+      "level": "manager",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "gameplay_engineer",
+      "name": "Gameplay Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "context7"
+      ],
+      "activation": "always",
+      "reports_to": "game_eng_manager"
+    },
+    {
+      "id": "game_systems_designer",
+      "name": "Game Systems Designer",
+      "department": "Design",
+      "level": "specialist",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "design",
+        "rag"
+      ],
+      "activation": "always",
+      "reports_to": "game_director"
+    },
+    {
+      "id": "level_designer",
+      "name": "Level Designer",
+      "department": "Design",
+      "level": "specialist",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "design",
+        "approvals"
+      ],
+      "activation": "medium",
+      "reports_to": "game_director"
+    },
+    {
+      "id": "game_asset_pipeline",
+      "name": "Game Asset Pipeline Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git"
+      ],
+      "activation": "medium",
+      "reports_to": "game_eng_manager"
+    },
+    {
+      "id": "game_qa",
+      "name": "Game QA Engineer",
+      "department": "Quality",
+      "level": "specialist",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "qa",
+        "tickets"
+      ],
+      "activation": "always",
+      "reports_to": "qa_director"
+    },
+    {
+      "id": "game_perf",
+      "name": "Game Performance Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "profiling",
+        "tickets"
+      ],
+      "activation": "large",
+      "reports_to": "game_eng_manager"
+    },
+    {
+      "id": "anti_cheat",
+      "name": "Game Security / Anti-Cheat Engineer",
+      "department": "Security",
+      "level": "specialist",
+      "project_types": [
+        "game"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "security",
+        "tickets"
+      ],
+      "activation": "large",
+      "reports_to": "security_director"
+    },
+    {
+      "id": "ai_director",
+      "name": "Director of AI/ML",
+      "department": "Engineering",
+      "level": "director",
+      "project_types": [
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "project",
+        "rag"
+      ],
+      "activation": "medium",
+      "reports_to": "cto"
+    },
+    {
+      "id": "ml_engineer",
+      "name": "ML/LLM Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "ai_ml"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git",
+        "context7"
+      ],
+      "activation": "always",
+      "reports_to": "ai_director"
+    },
+    {
+      "id": "data_engineer",
+      "name": "Data Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "ai_ml",
+        "fullstack"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "filesystem_write",
+        "git"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "eval_engineer",
+      "name": "AI Evaluation Engineer",
+      "department": "Quality",
+      "level": "specialist",
+      "project_types": [
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "qa",
+        "rag"
+      ],
+      "activation": "always",
+      "reports_to": "qa_director"
+    },
+    {
+      "id": "devops_director",
+      "name": "Director of DevOps",
+      "department": "Engineering",
+      "level": "director",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "git",
+        "project"
+      ],
+      "activation": "large",
+      "reports_to": "cto"
+    },
+    {
+      "id": "devops_engineer",
+      "name": "DevOps/CI Engineer",
+      "department": "Engineering",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "coder",
+      "tools": [
+        "git",
+        "github",
+        "filesystem_write"
+      ],
+      "activation": "medium",
+      "reports_to": "engineering_director"
+    },
+    {
+      "id": "dependency_manager",
+      "name": "Dependency & Supply Chain Engineer",
+      "department": "Security",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "security",
+        "dependencies",
+        "tickets"
+      ],
+      "activation": "medium",
+      "reports_to": "security_director"
+    },
+    {
+      "id": "technical_writer",
+      "name": "Technical Writer",
+      "department": "Release",
+      "level": "specialist",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "filesystem_write",
+        "github"
+      ],
+      "activation": "medium",
+      "reports_to": "portfolio_manager"
+    },
+    {
+      "id": "final_reviewer",
+      "name": "Final Reviewer",
+      "department": "Quality",
+      "level": "principal",
+      "project_types": [
+        "ios",
+        "macos",
+        "web",
+        "android",
+        "game",
+        "fullstack",
+        "ai_ml"
+      ],
+      "model_capability": "general",
+      "tools": [
+        "git_read",
+        "qa",
+        "rag"
+      ],
+      "activation": "always",
+      "reports_to": "chief_of_staff"
+    }
+  ]
+}

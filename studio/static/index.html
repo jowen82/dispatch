@@ -1,0 +1,188 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dispatch — Setup</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="wizard">
+<div class="wizard-shell">
+
+  <div class="wizard-top enter">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 17L10 11L4 5" stroke="#0b1020" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19H20" stroke="#0b1020" stroke-width="2.4" stroke-linecap="round"/></svg>
+      </div>
+      <div class="brand-text"><b>Dispatch</b><span>Setup Wizard</span></div>
+    </div>
+    <span class="pill accent">v0.2 · runs entirely on this Mac</span>
+  </div>
+
+  <div class="steps enter enter-1" id="steps">
+    <div class="step" data-step="0"><span class="n">1</span>System</div>
+    <div class="step" data-step="1"><span class="n">2</span>Deployment</div>
+    <div class="step" data-step="2"><span class="n">3</span>Tools</div>
+    <div class="step" data-step="3"><span class="n">4</span>Models</div>
+    <div class="step" data-step="4"><span class="n">5</span>Organization</div>
+    <div class="step" data-step="5"><span class="n">6</span>Integration</div>
+    <div class="step" data-step="6"><span class="n">7</span>Finish</div>
+  </div>
+
+  <div class="panel enter enter-2">
+
+    <!-- Step 0: System -->
+    <section class="wstep" data-step="0">
+      <h1>Discover this Mac</h1>
+      <p class="lead">Dispatch scans your hardware, keeps whatever already works, and only installs what's missing. Nothing leaves this machine.</p>
+      <div id="system" class="cards"></div>
+      <div id="rescanProgress"></div>
+      <div class="formrow"><button id="rescan">Rescan System</button></div>
+    </section>
+
+    <!-- Step 1: Deployment type(s) -->
+    <section class="wstep hidden" data-step="1">
+      <h1>What are you shipping?</h1>
+      <p class="lead">Pick every deployment target this workspace needs. Select as many as apply — the studio builds one coherent organization that covers all of them.</p>
+      <div class="type-grid" id="typeGrid"></div>
+      <div class="auto-summary" id="autoSummary">
+        <div class="badge">🧭</div>
+        <div><b id="autoSummaryTitle">Select at least one deployment type</b><span id="autoSummarySub">Organization size and complexity are decided for you based on your selection.</span></div>
+      </div>
+    </section>
+
+    <!-- Step 2: Tools -->
+    <section class="wstep hidden" data-step="2">
+      <h1>Developer &amp; security tools</h1>
+      <p class="lead">Command-line tools this workflow depends on. Anything already on your PATH is left alone.</p>
+      <div id="toolsList" class="cards"></div>
+      <div id="installProgress"></div>
+      <h2 style="margin-top:22px">Authentication</h2>
+      <div id="auth"></div>
+    </section>
+
+    <!-- Step 3: Models -->
+    <section class="wstep hidden" data-step="3">
+      <h1>Model recommendation</h1>
+      <div class="notice"><span>⚠️</span><div>Models are never deleted automatically. Removing one requires typing its exact name into a confirmation dialog.</div></div>
+      <div id="pullProgress"></div>
+      <div id="recommendedModels"></div>
+      <h2 style="margin-top:22px">Detected models</h2>
+      <div id="existingModels" class="cards"></div>
+    </section>
+
+    <!-- Step 4: Organization (auto, read-only) -->
+    <section class="wstep hidden" data-step="4">
+      <h1>Adaptive organization</h1>
+      <p class="lead">Complexity and role count are derived automatically from what you're shipping — they aren't dials to second-guess. This is the roster the studio proposes.</p>
+      <div id="orgSummary"></div>
+      <div id="orgList"></div>
+    </section>
+
+    <!-- Step 5: Hermes integration -->
+    <section class="wstep hidden" data-step="5">
+      <h1>Hermes integration</h1>
+      <div id="hermes"></div>
+
+      <h2 style="margin-top:24px">Which models will your agents use?</h2>
+      <p class="lead" style="font-size:13.5px">This decides what the generated Hermes config and agent checklist point each role at. You can change this later and regenerate.</p>
+      <div class="type-grid" id="modelSourceGrid" style="grid-template-columns:repeat(3,1fr)">
+        <button type="button" class="type-card" data-source="local">
+          <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="type-icon">💻</div>
+          <div class="type-name">Local models</div>
+          <div class="type-desc">Use the Ollama models recommended in the previous step. No API keys, no per-token cost.</div>
+        </button>
+        <button type="button" class="type-card" data-source="frontier">
+          <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="type-icon">☁️</div>
+          <div class="type-name">Frontier models</div>
+          <div class="type-desc">Use hosted API models (OpenAI, Anthropic, Google, etc.) for every role.</div>
+        </button>
+        <button type="button" class="type-card" data-source="hybrid">
+          <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="type-icon">🔀</div>
+          <div class="type-name">Hybrid</div>
+          <div class="type-desc">Local by default; override specific roles with a frontier model where it's worth it.</div>
+        </button>
+      </div>
+      <div id="frontierForm" class="cards hidden" style="grid-template-columns:repeat(3,1fr)"></div>
+
+      <h2 style="margin-top:28px">Set up Hermes</h2>
+      <div class="formrow" style="margin-bottom:6px">
+        <button type="button" class="secondary" id="hermesTabFresh">Fresh install</button>
+        <button type="button" class="ghost" id="hermesTabExisting">Already installed</button>
+      </div>
+      <div class="panel" style="padding:18px 20px;background:#0e1420" id="hermesFreshPanel">
+        <ol style="margin:0;padding-left:20px;color:#c3cee0;font-size:13.5px;line-height:1.9">
+          <li>Install Hermes Desktop for macOS from your Hermes distribution (check with your provider or team for the current installer — this studio doesn't ship Hermes itself).</li>
+          <li>Launch Hermes once so it creates <code>~/.hermes/config.yaml</code>.</li>
+          <li>Come back here and click <b>Generate Integration Files</b> below.</li>
+          <li>Open <code>~/.hermes/config.yaml</code> in a text editor and paste in the generated <code>mcp_servers</code> block from <code>hermes-mcp.yaml</code>.</li>
+          <li>Restart Hermes.</li>
+          <li>Work through the <b>agent setup checklist</b> below to create every role Hermes doesn't already have.</li>
+        </ol>
+      </div>
+      <div class="panel hidden" style="padding:18px 20px;background:#0e1420" id="hermesExistingPanel">
+        <ol style="margin:0;padding-left:20px;color:#c3cee0;font-size:13.5px;line-height:1.9">
+          <li>Click <b>Backup Existing Hermes Config</b> first — always keep a copy of a working config before touching it.</li>
+          <li>Click <b>Generate Integration Files</b> to produce a candidate <code>mcp_servers</code> block sized to this Mac.</li>
+          <li>Open <code>~/.hermes/config.yaml</code> and check whether it already has an <code>mcp_servers:</code> section — the status below tells you which case you're in.
+            <ul style="margin-top:6px">
+              <li><b>No existing section:</b> paste the generated block in as-is.</li>
+              <li><b>Existing section:</b> merge server entries one at a time so you don't clobber servers you already rely on.</li>
+            </ul>
+          </li>
+          <li>Restart Hermes and confirm the new MCP servers show up in its tool list.</li>
+          <li>Use the <b>agent setup checklist</b> below for any role Hermes doesn't already have.</li>
+        </ol>
+      </div>
+
+      <div class="formrow" style="margin-top:16px">
+        <button id="backupHermes" class="secondary">Backup Existing Hermes Config</button>
+        <button id="generateIntegration">Generate Integration Files</button>
+      </div>
+      <pre id="integrationOutput" class="hidden"></pre>
+
+      <h2 style="margin-top:28px">Agent setup checklist</h2>
+      <p class="lead" style="font-size:13.5px">If Hermes doesn't create these roles automatically from <code>agent-organization.json</code>, create each one manually using this checklist.</p>
+      <div class="formrow"><button class="secondary" id="copyAllAgents">Copy full checklist</button></div>
+      <div id="agentChecklist"></div>
+    </section>
+
+    <!-- Step 6: Finish -->
+    <section class="wstep hidden" data-step="6">
+      <div class="finish-screen">
+        <div class="check-orb"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h1>You're set up</h1>
+        <p class="lead" style="margin:0 auto 22px">Activate the roster and hand off to the Command Center — the ongoing home for your kanban board, agents, tickets, approvals and diagnostics.</p>
+        <button id="finishBtn" class="primary" style="font-size:15px;padding:13px 22px">Launch Command Center →</button>
+        <p class="muted" id="finishNote" style="margin-top:16px;font-size:12px"></p>
+      </div>
+    </section>
+
+    <div class="wizard-nav" id="wizardNav">
+      <button id="backBtn" class="ghost">← Back</button>
+      <button id="nextBtn" class="primary">Continue →</button>
+    </div>
+  </div>
+
+  <p class="muted" style="text-align:center;margin-top:18px;font-size:11.5px">All actions run local shell commands (Homebrew, Ollama, gh). Review before confirming anything destructive.</p>
+</div>
+
+<dialog id="removeDialog">
+  <div class="dialog-inner">
+    <h3>Confirm model removal</h3>
+    <p class="muted" style="font-size:13px">Type the exact model name to confirm.</p>
+    <p style="font-family:monospace;background:#0b0f16;border:1px solid var(--line);border-radius:8px;padding:8px 10px" id="removeModelName"></p>
+    <input id="removeConfirmInput" placeholder="Type model name here" style="width:100%;margin:10px 0">
+    <div class="formrow" style="justify-content:flex-end">
+      <button class="ghost" id="removeCancel">Cancel</button>
+      <button class="danger" id="removeConfirm">Remove model</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="/setup.js"></script>
+</body>
+</html>

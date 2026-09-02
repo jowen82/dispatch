@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jowen82.github.io/dispatch/sitemap.xml

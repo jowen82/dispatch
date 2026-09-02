@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>Dispatch — Local-First AI Developer Tooling for macOS</title>
+<meta name="description" content="Dispatch is a free, open-source macOS setup wizard and command center that builds an adaptive AI development organization on your own Mac — no cloud, no subscription, no telemetry.">
+<link rel="canonical" href="https://jowen82.github.io/dispatch/">
+<meta name="author" content="Jeff Owen">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#0b1020">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Dispatch — Local-First AI Developer Tooling for macOS">
+<meta property="og:description" content="A free, open-source setup wizard and command center that builds an adaptive AI development organization on your Mac. No cloud, no subscription, no telemetry.">
+<meta property="og:url" content="https://jowen82.github.io/dispatch/">
+<meta property="og:image" content="https://jowen82.github.io/dispatch/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Dispatch">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Dispatch — Local-First AI Developer Tooling for macOS">
+<meta name="twitter:description" content="A free, open-source setup wizard and command center that builds an adaptive AI development organization on your Mac. No cloud, no subscription, no telemetry.">
+<meta name="twitter:image" content="https://jowen82.github.io/dispatch/assets/og-image.png">
+
+<!-- Icons -->
+<link rel="icon" href="assets/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="assets/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+<!-- Structured data: SoftwareApplication -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Dispatch",
+  "alternateName": "Local AI Dev Studio",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS",
+  "url": "https://jowen82.github.io/dispatch/",
+  "downloadUrl": "https://github.com/jowen82/dispatch",
+  "codeRepository": "https://github.com/jowen82/dispatch",
+  "license": "https://github.com/jowen82/dispatch/blob/main/LICENSE",
+  "description": "A local-first setup wizard and command center that builds an adaptive AI development organization on your Mac, with hardware discovery, local model recommendation via Ollama, real Hermes agent dispatch, and a kanban-based command center.",
+  "image": "https://jowen82.github.io/dispatch/assets/og-image.png",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "author": {
+    "@type": "Person",
+    "name": "Jeff Owen",
+    "sameAs": ["https://www.linkedin.com/in/jeffowen-pro/", "https://github.com/jowen82"]
+  }
+}
+</script>
+
+<!-- Structured data: FAQPage (Answer Engine Optimization) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is Dispatch free?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Yes. It is MIT-licensed and free to use, fork, and modify. The only costs are whatever local models and disk space you choose to install." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Dispatch send my code or prompts to the cloud?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. Model inference runs locally through Ollama, agent dispatch runs locally through Hermes, and all studio state is stored in a local SQLite database on your Mac. Nothing is sent to a third-party cloud." }
+    },
+    {
+      "@type": "Question",
+      "name": "What deployment platforms can Dispatch plan an organization for?",
+      "acceptedAnswer": { "@type": "Answer", "text": "iOS, macOS, web, Android, game development, full-stack, and AI/ML. You select one or more as cards in the Setup Wizard and the studio builds one coherent organization covering all of them." }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need a powerful Mac to run Dispatch?",
+      "acceptedAnswer": { "@type": "Answer", "text": "No. The model recommender scales its suggestions to your available RAM, from lightweight 4B-class models up to larger models on 24GB and above." }
+    },
+    {
+      "@type": "Question",
+      "name": "What is the Command Center in Dispatch?",
+      "acceptedAnswer": { "@type": "Answer", "text": "The ongoing dashboard the Setup Wizard opens once setup finishes: a kanban board, service-desk tickets, change approvals, projects with file attachments, the active agent roster, and diagnostics, all in one place." }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Dispatch actually talk to Hermes agents, or just queue files?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Both. When the hermes CLI is on PATH, Dispatch sends live with hermes send and shows the real result on every card. Every action is also mirrored into a file-based inbox as a durable audit trail, so nothing is lost if Hermes isn't running." }
+    }
+  ]
+}
+</script>
+
+<style>
+:root{color-scheme:dark;--bg:#080a10;--panel:#10141d;--card:#131923;--line:#232c3a;--text:#eef2f8;--muted:#8ea0b8;--accent:#6ea8ff;--accent-2:#9b7bff;--good:#4ade80}
+*{box-sizing:border-box}
+body{margin:0;color:var(--text);font:16px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;background:radial-gradient(1200px 700px at 12% -10%,rgba(110,168,255,.10),transparent 55%),radial-gradient(900px 600px at 100% 0%,rgba(155,123,255,.09),transparent 50%),linear-gradient(180deg,#0b1120,#0a0d16 55%,var(--bg));background-attachment:fixed}
+a{color:var(--accent)}
+.wrap{max-width:980px;margin:0 auto;padding:0 24px}
+header.hero{padding:70px 0 40px;text-align:center}
+.brand{display:inline-flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:18px}
+h1{font-size:44px;line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.lead{font-size:19px;color:#c3cee0;max-width:660px;margin:0 auto 28px}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-block;padding:13px 22px;border-radius:10px;text-decoration:none;font-weight:650;font-size:15px}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#0b1020;box-shadow:0 10px 24px -10px rgba(110,168,255,.55)}
+.btn.ghost{border:1px solid var(--line);color:var(--text)}
+img.hero-shot{width:100%;border-radius:16px;border:1px solid var(--line);margin:36px 0;box-shadow:0 30px 60px -20px rgba(0,0,0,.6)}
+section{padding:36px 0}
+h2{font-size:26px;letter-spacing:-.01em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-top:20px}
+.card{background:linear-gradient(180deg,var(--card),#10141c);border:1px solid var(--line);border-radius:14px;padding:20px}
+.card b{display:block;margin-bottom:6px;font-size:16px}
+.card p{color:var(--muted);font-size:14.5px;margin:0}
+.pill{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:4px 12px;font-size:12.5px;color:var(--muted);margin:3px 6px 3px 0}
+pre{background:#080b0f;border:1px solid var(--line);border-radius:10px;padding:18px;overflow:auto;font-size:14px}
+details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:10px}
+summary{cursor:pointer;font-weight:600}
+details p{color:var(--muted);margin:10px 0 2px}
+footer{padding:50px 0 70px;text-align:center;color:var(--muted);font-size:13.5px}
+footer a{color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="brand">Open Source · MIT License</div>
+    <h1>An AI development org that runs entirely on your Mac.</h1>
+    <p class="lead">Dispatch scans your hardware, recommends the right local models, installs only what's missing, and builds an adaptive agent organization sized to what you're shipping — then dispatches real work to live Hermes agents, all without a single call to a third-party cloud.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/jowen82/dispatch">View on GitHub</a>
+      <a class="btn ghost" href="#faq">Read the FAQ</a>
+    </div>
+    <img class="hero-shot" src="assets/og-image.png" alt="Dispatch banner showing the product name and 100% local, zero cloud cost, Ollama-powered, open source badges">
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section id="how-it-works">
+    <h2>How it works</h2>
+    <img class="hero-shot" src="assets/architecture.png" alt="Architecture diagram showing the Setup Wizard, Local Runtimes, and Adaptive Org feeding into a local Command Center on your Mac" style="margin:20px 0">
+    <div class="grid">
+      <div class="card"><b>1. Discover</b><p>Scans chip, RAM, free disk, and developer tooling with a live progress bar and ETA.</p></div>
+      <div class="card"><b>2. Recommend</b><p>Matches general, coding, and embedding models to your available unified memory via Ollama.</p></div>
+      <div class="card"><b>3. Organize</b><p>Pick your deployment targets as cards — the studio sizes the agent organization for you.</p></div>
+      <div class="card"><b>4. Dispatch</b><p>Launches a Command Center that sends tasks, tickets, approvals, and files straight to live Hermes agents.</p></div>
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>Built for local-first teams</h2>
+    <p style="color:var(--muted)">
+      <span class="pill">100% Local</span>
+      <span class="pill">Zero Cloud Cost</span>
+      <span class="pill">Ollama-powered</span>
+      <span class="pill">Real Hermes Dispatch</span>
+      <span class="pill">MIT Licensed</span>
+      <span class="pill">macOS</span>
+    </p>
+    <div class="grid">
+      <div class="card"><b>Hardware &amp; tool discovery</b><p>Chip, RAM, disk, Homebrew, Ollama, Hermes, GitHub CLI, Node, and security tools like semgrep, gitleaks, and osv-scanner.</p></div>
+      <div class="card"><b>Multi-select deployment cards</b><p>iOS, macOS, web, Android, game, full-stack, AI/ML — pick as many as you're shipping to.</p></div>
+      <div class="card"><b>Adaptive agent organization</b><p>A large dormant agent catalog activates only the roles relevant to your selection and computed complexity.</p></div>
+      <div class="card"><b>Command Center</b><p>Kanban board, service-desk tickets, change approvals, projects with file attachments, and a live agent roster, backed by local SQLite.</p></div>
+      <div class="card"><b>Real Hermes dispatch</b><p>Auto-creates a Hermes profile per agent and sends every action live with <code>hermes send</code>, with a file-based fallback audit trail either way.</p></div>
+    </div>
+  </section>
+
+  <section id="quick-start">
+    <h2>Quick start</h2>
+    <pre><code>git clone https://github.com/jowen82/dispatch.git
+cd dispatch
+chmod +x bootstrap.command
+./bootstrap.command</code></pre>
+    <p style="color:var(--muted)">Or double-click <code>bootstrap.command</code> in Finder. The wizard opens at <code>http://127.0.0.1:8787</code>.</p>
+  </section>
+
+  <section id="faq">
+    <h2>Frequently asked questions</h2>
+    <details>
+      <summary>Is Dispatch free?</summary>
+      <p>Yes. It's MIT-licensed and free to use, fork, and modify. The only costs are whatever local models and disk space you choose to install.</p>
+    </details>
+    <details>
+      <summary>Does it send my code or prompts to the cloud?</summary>
+      <p>No. Model inference runs locally through Ollama, agent dispatch runs locally through Hermes, and all studio state is stored in a local SQLite database on your Mac.</p>
+    </details>
+    <details>
+      <summary>What platforms can it plan for?</summary>
+      <p>iOS, macOS, web, Android, game development, full-stack, and AI/ML — selectable as multiple deployment-type cards in the Setup Wizard.</p>
+    </details>
+    <details>
+      <summary>Do I need a powerful Mac to run it?</summary>
+      <p>No. The model recommender scales its suggestions to your available RAM, from lightweight 4B-class models up to larger models on 24GB+ machines.</p>
+    </details>
+    <details>
+      <summary>Can I remove a model it installed?</summary>
+      <p>Yes, but only with an explicit confirmation step — you must type the exact model name before it's removed. Nothing is deleted automatically.</p>
+    </details>
+    <details>
+      <summary>Does it actually talk to Hermes agents, or just queue files?</summary>
+      <p>Both. When the <code>hermes</code> CLI is on PATH, Dispatch sends live with <code>hermes send</code> and shows the real result on every card. Every action is also mirrored into a file-based inbox as a durable audit trail, so nothing is lost if Hermes isn't running.</p>
+    </details>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Built by <a href="https://www.linkedin.com/in/jeffowen-pro/">Jeff Owen</a> · <a href="https://github.com/jowen82/dispatch">Source on GitHub</a> · MIT License</p>
+  </div>
+</footer>
+
+</body>
+</html>

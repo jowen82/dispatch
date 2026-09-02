@@ -1,0 +1,95 @@
+{
+  "tools": [
+    {
+      "id": "git",
+      "command": "git",
+      "brew": "git",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "gh",
+      "command": "gh",
+      "brew": "gh",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "jq",
+      "command": "jq",
+      "brew": "jq",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "ripgrep",
+      "command": "rg",
+      "brew": "ripgrep",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "fd",
+      "command": "fd",
+      "brew": "fd",
+      "required": false,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "node",
+      "command": "node",
+      "brew": "node",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "semgrep",
+      "command": "semgrep",
+      "brew": "semgrep",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "gitleaks",
+      "command": "gitleaks",
+      "brew": "gitleaks",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "osv-scanner",
+      "command": "osv-scanner",
+      "brew": "osv-scanner",
+      "required": true,
+      "groups": [
+        "all"
+      ]
+    },
+    {
+      "id": "swiftlint",
+      "command": "swiftlint",
+      "brew": "swiftlint",
+      "required": false,
+      "groups": [
+        "ios",
+        "macos"
+      ]
+    }
+  ]
+}

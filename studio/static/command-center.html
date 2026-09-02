@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dispatch — Command Center</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="command">
+<div class="cc-shell">
+
+  <aside class="cc-sidebar">
+    <div class="cc-brand">
+      <div class="brand-mark" style="width:30px;height:30px">
+        <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M4 17L10 11L4 5" stroke="#0b1020" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 19H20" stroke="#0b1020" stroke-width="2.8" stroke-linecap="round"/></svg>
+      </div>
+      <div><b>Command Center</b><span>Dispatch</span></div>
+    </div>
+
+    <nav class="cc-nav" id="ccNav">
+      <button data-view="overview" class="active"><span class="icon">◎</span>Overview</button>
+      <button data-view="kanban"><span class="icon">▦</span>Kanban Board</button>
+      <button data-view="agents"><span class="icon">◈</span>Agents</button>
+      <button data-view="tickets"><span class="icon">☍</span>Service Desk</button>
+      <button data-view="approvals"><span class="icon">✓</span>Approvals</button>
+      <button data-view="projects"><span class="icon">▤</span>Projects</button>
+      <button data-view="models"><span class="icon">◔</span>Models</button>
+      <button data-view="tools"><span class="icon">⚙</span>Tools &amp; Integration</button>
+      <button data-view="diagnostics"><span class="icon">⌁</span>Diagnostics</button>
+    </nav>
+
+    <div class="spacer"></div>
+    <div class="cc-status"><span class="dot"></span>Live · local only<br><a href="/" style="color:var(--muted)">← Back to Setup Wizard</a></div>
+  </aside>
+
+  <main class="cc-main">
+
+    <div class="cc-topbar">
+      <h1 id="viewTitle">Overview</h1>
+      <div class="formrow" style="margin:0">
+        <button class="secondary" id="refreshBtn">Refresh</button>
+      </div>
+    </div>
+
+    <section class="cc-view active" data-view="overview">
+      <div class="notice info" id="hermesBridgeNotice">
+        <span>🔗</span>
+        <div>
+          <b>Hermes bridge — best-effort, unverified.</b>
+          <div class="muted" style="font-size:12.5px;margin-top:4px" id="hermesBridgeText">Every action here is mirrored as a job file into your shared <code>projects/&lt;slug&gt;/hermes-inbox/</code> folder (the same one wired into Hermes via the generated filesystem MCP server). This studio has no confirmed way to verify a running Hermes agent actually reads it — check <a href="#" data-nav="tools">Tools &amp; Integration</a> for setup notes.</div>
+        </div>
+      </div>
+      <div class="cards" id="ccMetrics"></div>
+      <div class="twocol" style="margin-top:6px">
+        <div class="panel" style="padding:18px">
+          <h2>Recent activity</h2>
+          <div id="ccEvents"></div>
+        </div>
+        <div class="panel" style="padding:18px">
+          <h2>Organization snapshot</h2>
+          <div id="ccOrgSnapshot"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cc-view" data-view="kanban">
+      <div class="formrow">
+        <input id="newTaskTitle" placeholder="New task title…" style="min-width:260px">
+        <select id="newTaskPriority"><option>P1</option><option>P2</option><option selected>P3</option><option>P4</option></select>
+        <select id="newTaskAgent"></select>
+        <button id="addTaskBtn">Add Task</button>
+      </div>
+      <div class="kanban" id="kanban"></div>
+    </section>
+
+    <section class="cc-view" data-view="agents">
+      <div class="cards" id="ccAgents"></div>
+    </section>
+
+    <section class="cc-view" data-view="tickets">
+      <div class="formrow">
+        <input id="newTicketTitle" placeholder="Ticket title…" style="min-width:260px">
+        <select id="newTicketPriority"><option>P1</option><option>P2</option><option selected>P3</option><option>P4</option></select>
+        <button id="addTicketBtn">Open Ticket</button>
+      </div>
+      <div class="cards" id="ccTickets"></div>
+    </section>
+
+    <section class="cc-view" data-view="approvals">
+      <div class="formrow">
+        <input id="newApprovalTitle" placeholder="Change request title…" style="min-width:260px">
+        <button id="addApprovalBtn">Request Approval</button>
+      </div>
+      <div class="cards" id="ccApprovals"></div>
+    </section>
+
+    <section class="cc-view" data-view="projects">
+      <div class="formrow">
+        <input id="newProjectName" placeholder="Project name…" style="min-width:220px">
+        <input id="newProjectDesc" placeholder="What's this project about? (optional)" style="min-width:280px;flex:1">
+      </div>
+      <div class="formrow">
+        <label class="muted" style="font-size:12px">Agents on this project (from your Hermes roster)</label>
+        <select id="newProjectAgents" multiple size="4" style="min-width:280px"></select>
+        <button id="addProjectBtn">New Project</button>
+      </div>
+      <p class="muted" style="font-size:12px">Click a project card to see its details, edit its description, manage assigned agents, or archive/delete it.</p>
+      <div class="cards" id="ccProjects"></div>
+    </section>
+
+    <section class="cc-view" data-view="models">
+      <div id="ccRecommendedModels"></div>
+      <h2 style="margin-top:20px">Detected models</h2>
+      <div class="cards" id="ccExistingModels"></div>
+    </section>
+
+    <section class="cc-view" data-view="tools">
+      <h2>Developer tools</h2>
+      <div class="cards" id="ccTools"></div>
+      <h2 style="margin-top:20px">Hermes integration</h2>
+      <div id="ccHermes"></div>
+    </section>
+
+    <section class="cc-view" data-view="diagnostics">
+      <p class="lead">Create a redacted JSON support report you can share for troubleshooting.</p>
+      <button id="reportBtn">Create Support Report</button>
+      <pre id="diag"></pre>
+      <h2 style="margin-top:20px">Recent installer actions</h2>
+      <pre id="logs"></pre>
+    </section>
+
+  </main>
+</div>
+
+<dialog id="projectDialog">
+  <div class="dialog-inner" style="min-width:420px;max-width:520px">
+    <h3 id="pdName">Project</h3>
+    <div style="margin:6px 0 14px"><span class="pill" id="pdType"></span><span class="pill" id="pdStatus"></span></div>
+    <label class="muted" style="display:block;font-size:12px;margin-bottom:6px">About this project</label>
+    <textarea id="pdDescription" rows="4" style="width:100%;resize:vertical" placeholder="What's this project about?"></textarea>
+    <p class="muted" id="pdMeta" style="font-size:11.5px;margin-top:8px"></p>
+    <label class="muted" style="display:block;font-size:12px;margin:14px 0 6px">Agents on this project</label>
+    <div id="pdAgents" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+
+    <label class="muted" style="display:block;font-size:12px;margin:14px 0 6px">Send a file to Hermes (images, docs, whatever helps the project along)</label>
+    <div id="pdFiles" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
+    <div class="formrow" style="flex-wrap:wrap">
+      <input type="file" id="pdFileInput" style="max-width:220px" />
+      <select id="pdFileAgent" style="min-width:150px"><option value="">Route to: chief_of_staff</option></select>
+      <input type="text" id="pdFileNote" placeholder="Optional note for the agent" style="flex:1;min-width:160px" />
+      <button class="secondary" id="pdFileUpload">Upload &amp; Send</button>
+    </div>
+    <p class="muted" id="pdFileStatus" style="font-size:11.5px;margin-top:4px"></p>
+
+    <div class="formrow" style="justify-content:space-between;margin-top:16px">
+      <div class="formrow" style="margin:0">
+        <button class="danger" id="pdDelete">Delete</button>
+        <button class="secondary" id="pdArchive">Archive</button>
+      </div>
+      <div class="formrow" style="margin:0">
+        <button class="ghost" id="pdClose">Close</button>
+        <button class="primary" id="pdSave">Save</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
+<script src="/command.js"></script>
+</body>
+</html>
