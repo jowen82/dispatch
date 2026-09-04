@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, shutil, subprocess, threading, time, json, re
+import os, platform, shutil, subprocess, threading, time, json, re
 from pathlib import Path
 
 def run(cmd,timeout=1800,env=None):
@@ -30,6 +30,22 @@ def github_auth():
 
 def open_url(url):
     return run(["open",url],timeout=10)
+
+def install_hermes():
+    """Fetch and run Hermes's own official installer — the same one-liner
+    from hermes-agent.nousresearch.com/docs/getting-started/installation,
+    per-OS. This downloads and executes a script from Nous Research's own
+    domain, on the person's explicit click in the wizard (same trust model
+    as clicking the same command from their docs page yourself). UNTESTED
+    on real Windows hardware — the macOS/Linux path mirrors the documented
+    curl-pipe-bash exactly."""
+    system = platform.system()
+    if system == "Windows":
+        cmd = ["powershell", "-NoProfile", "-Command",
+               "iex (irm https://hermes-agent.nousresearch.com/install.ps1)"]
+    else:
+        cmd = ["bash", "-c", "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"]
+    return run(cmd, timeout=900)
 
 def backup_hermes(home):
     cfg=Path.home()/".hermes"/"config.yaml"

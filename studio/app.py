@@ -9,8 +9,9 @@ from urllib.parse import urlparse, parse_qs
 MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024
 
 from .state import State
+from . import discovery
 from .discovery import full_scan
-from .recommender import recommend_models, evaluate_existing
+from .recommender import recommend_models, evaluate_existing, rank_all_local_models
 from .agent_planner import build_org
 from . import actions
 from .hermes_adapter import generate, integration_status
@@ -18,6 +19,7 @@ from .report import create as create_report
 from .jobs import JobManager
 from . import hermes_bridge
 from . import hermes_client
+from . import hermes_mcp_config
 
 # Rough throughput assumption used only to seed the very first ETA for a
 # model pull, before we have a learned average for that specific model.
@@ -31,6 +33,8 @@ class App:
         self.root = Path(package_root)
         self.home = Path(home)
         self.home.mkdir(parents=True, exist_ok=True)
+        self.port = 8787  # overwritten by main() with the real bound port; used only to
+                           # tell Hermes where to call Dispatch's own API back
         self.state = State(self.home)
         self.jobs = JobManager(self.state)
         self.models = json.loads((self.root / 'studio/catalogs/models.json').read_text())
@@ -58,12 +62,19 @@ class App:
         return self.snapshot()
 
     def snapshot(self):
+        setup = dict(self.state.setup)
+        if setup.get('frontier_api_keys'):
+            # Never round-trip raw API keys back to the browser; the UI only
+            # needs to know which providers already have one saved.
+            setup['frontier_api_keys_set'] = sorted(setup['frontier_api_keys'].keys())
+            setup = {k: v for k, v in setup.items() if k != 'frontier_api_keys'}
         return {
             'scan': self.scan,
             'recommendation': self.rec,
             'existing_models': evaluate_existing(self.scan.get('models', []), self.rec) if self.rec else [],
+            'ranked_local_models': rank_all_local_models(self.scan.get('system', {}), self.scan.get('local_models', {})),
             'organization': self.org,
-            'setup': self.state.setup,
+            'setup': setup,
             'integration': integration_status(),
             'logs': self.log[-100:],
         }
@@ -83,6 +94,59 @@ class App:
     def apply_org(self):
         hermes_available = hermes_client.available()
         created, refreshed, failed = [], [], []
+        mcp_result = None
+        main_model_result = None
+        model_source = self.state.setup.get('model_source', 'local')
+        frontier_models = self.state.setup.get('frontier_models') or {}
+        frontier_keys = self.state.setup.get('frontier_api_keys') or {}
+
+        if hermes_available:
+            # 1. Get MCP tool access (filesystem, context7, playwright, penpot)
+            #    into the GLOBAL config first, before any profile is cloned from it.
+            try:
+                hermes_mcp_config.backup_hermes_config()
+                mcp_result = hermes_mcp_config.merge_mcp_servers(self.home)
+            except Exception as e:
+                mcp_result = {'ok': False, 'stderr': str(e)}
+
+            # 2. Point the GLOBAL main model at whatever "local"/"frontier"/"hybrid"
+            #    resolves to for the general role — hybrid starts from local here,
+            #    same as every other agent, and picks up per-role overrides below.
+            if model_source in ('local', 'hybrid'):
+                general = (self.rec or {}).get('general') or {}
+                general_id = general.get('id', 'llama3.1:8b')
+                # Hermes Agent hard-refuses to init any model below its own
+                # 64K-token context floor — verify the actual pulled model
+                # clears it before wiring it up, instead of finding out only
+                # when Hermes itself fails on next launch.
+                ctx = discovery.ollama_context_length(general_id)
+                if ctx is not None and ctx < discovery.HERMES_MIN_CONTEXT_TOKENS:
+                    main_model_result = {
+                        'ok': False,
+                        'provider': 'ollama',
+                        'model': general_id,
+                        'reason': 'context_below_minimum',
+                        'context_length': ctx,
+                        'stderr': (
+                            f'{general_id} has a {ctx:,}-token context window, below the '
+                            f'{discovery.HERMES_MIN_CONTEXT_TOKENS:,}-token minimum Hermes Agent '
+                            'requires to initialize. Skipped configuring it as the main model — '
+                            'pull a long-context model instead (e.g. `ollama pull llama3.1:8b`, '
+                            '128K context) and re-run setup, or switch to a frontier/hybrid model source.'
+                        ),
+                    }
+                else:
+                    main_model_result = hermes_client.configure_main_model('ollama', general_id)
+            elif model_source == 'frontier':
+                fm = frontier_models.get('general') or {}
+                if fm.get('provider') and fm.get('model'):
+                    main_model_result = hermes_client.configure_main_model(
+                        fm['provider'].lower(), fm['model'],
+                        api_key=frontier_keys.get(fm['provider'].lower()))
+
+        # 3. Create/refresh every agent's Hermes profile. New profiles are
+        #    cloned from the now-configured global config, so they inherit
+        #    the MCP servers and main model automatically.
         for a in self.org.get('agents', []):
             self.state.exec(
                 "INSERT OR REPLACE INTO agents(id,name,department,level,model_capability,status,activity) VALUES(?,?,?,?,?,'idle','Ready')",
@@ -90,17 +154,34 @@ class App:
             )
             if hermes_available:
                 already_had_profile = hermes_client.profile_exists(a['id'])
-                res = hermes_client.create_profile(a['id'], hermes_client.build_persona(a))
+                res = hermes_client.create_profile(a['id'], hermes_client.build_persona(a), clone=not already_had_profile)
                 if res.get('ok'):
                     (refreshed if already_had_profile else created).append(a['id'])
+                    # Hybrid: apply this role's frontier override on top of the
+                    # cloned local default, if one was configured in the wizard.
+                    if model_source == 'hybrid':
+                        role = a.get('model_capability', 'general')
+                        fm = frontier_models.get(role)
+                        if fm and fm.get('provider') and fm.get('model'):
+                            hermes_client.configure_main_model(
+                                fm['provider'].lower(), fm['model'],
+                                api_key=frontier_keys.get(fm['provider'].lower()),
+                                profile=a['id'])
                 else:
                     failed.append({'agent': a['id'], 'stderr': res.get('stderr')})
+
         result = {'ok': True, 'count': len(self.org.get('agents', []))}
         if hermes_available:
             result['hermes_profiles'] = {'created': created, 'refreshed': refreshed, 'failed': failed}
-            self.record('apply-org: created Hermes profiles', result['hermes_profiles'])
+            result['hermes_mcp'] = mcp_result
+            result['hermes_main_model'] = main_model_result
+            self.record('apply-org: configured Hermes', {
+                'profiles': result['hermes_profiles'], 'mcp': mcp_result, 'model': main_model_result,
+            })
         else:
             result['hermes_profiles'] = None
+            result['hermes_mcp'] = None
+            result['hermes_main_model'] = None
         return result
 
     def cc(self):
@@ -113,8 +194,11 @@ class App:
         for kind, rows in (('task', tasks), ('ticket', tickets), ('approval', approvals), ('file', files)):
             for r in rows:
                 r['hermes_result'] = hermes_bridge.check_result(self.home, slugs.get(r.get('project_id')), kind, r['key'])
+        projects = self.state.rows('SELECT * FROM projects ORDER BY id DESC')
+        for pr in projects:
+            pr['hermes_result'] = hermes_bridge.check_result(self.home, pr['slug'], 'project', pr['slug'])
         return {
-            'projects': self.state.rows('SELECT * FROM projects ORDER BY id DESC'),
+            'projects': projects,
             'tasks': tasks,
             'tickets': tickets,
             'approvals': approvals,
@@ -154,6 +238,17 @@ class App:
     def _job_install_tool(self, package):
         res = actions.install_brew(package)
         self.record('install tool ' + str(package), res)
+        self.rescan()
+        return res
+
+    def start_install_hermes_job(self):
+        estimate = self.jobs.estimate('install_hermes', 90)
+        job_id = self.jobs.start('install_hermes', 'Installing Hermes', estimate, self._job_install_hermes)
+        return {'job_id': job_id}
+
+    def _job_install_hermes(self):
+        res = actions.install_hermes()
+        self.record('install hermes', res)
         self.rescan()
         return res
 
@@ -229,7 +324,7 @@ class App:
 
         prompt = payload.get('prompt')
         if not prompt:
-            return
+            return {'ok': False, 'stderr': 'Nothing to dispatch — payload had no prompt.'}
         target = payload.get('agent') or 'chief_of_staff'
         if hermes_client.available():
             result = hermes_client.send(target, prompt)
@@ -240,6 +335,69 @@ class App:
             hermes_bridge.write_result(self.home, slug, kind, key, result)
         except Exception as e:
             self.record(f'hermes outbox write failed for {kind} {key}', {'ok': False, 'stderr': str(e)})
+        return result
+
+    def dispatch_project_prompt(self, project_id, name=None, project_type=None, description=None, agent_ids=None):
+        """Send (or re-send) a project's kickoff prompt to Hermes, telling it to
+        start work now and to keep the Command Center Kanban board current as it
+        goes — by calling Dispatch's own local task API directly, since that's
+        the only way an autonomous Hermes agent can make its own progress show
+        up on the board (Dispatch can't watch Hermes work from the outside).
+        On a successful send, flips the project from 'planning'/'active' to
+        'in_progress' so the Command Center reflects that Hermes is on it.
+        Used both right after project creation and from a manual "Send to
+        Hermes" action, so every field is optional and falls back to what's
+        already stored for this project."""
+        rows = self.state.rows('SELECT * FROM projects WHERE id=?', (project_id,))
+        if not rows:
+            return {'ok': False, 'stderr': 'Project not found.'}
+        p = rows[0]
+        name = name if name is not None else p['name']
+        project_type = project_type if project_type is not None else p['project_type']
+        description = description if description is not None else (p.get('description') or '')
+        slug = p['slug']
+        if agent_ids is None:
+            agent_ids = [r['agent_id'] for r in self.state.rows(
+                'SELECT agent_id FROM project_agents WHERE project_id=?', (project_id,))]
+
+        base_url = f'http://127.0.0.1:{self.port}'
+        kickoff = (
+            f"New project '{name}' ({project_type}). {description or 'No description yet.'}\n\n"
+            "Start working on this now — don't wait for further instructions. Break the work into "
+            f"an initial task list and put each task on the Command Center Kanban board yourself by "
+            f'sending a POST request to {base_url}/api/task with a JSON body like '
+            f'{{"project_id": {project_id}, "title": "<task title>", "status": "backlog", '
+            '"priority": "P2", "agent": "<your agent id>"}. As you pick up or finish a task, update '
+            f'it with a POST to {base_url}/api/task-update using the "key" returned when you created '
+            'it (e.g. {"key": "TASK-1", "status": "in_progress"} then later {"status": "done"}). '
+            'Keep the board current as you go so progress is visible without anyone asking.'
+        )
+        result = self._dispatch_to_hermes(project_id, 'project', slug, {
+            'name': name, 'description': description, 'project_type': project_type,
+            'agents': agent_ids, 'prompt': kickoff,
+        })
+        if result.get('ok'):
+            self.state.exec(
+                "UPDATE projects SET status='in_progress' WHERE id=? AND status IN ('planning','active')",
+                (project_id,),
+            )
+            self.record(f'dispatched project {slug} to Hermes — now in_progress', result)
+        return result
+
+    def create_project(self, data):
+        name = data.get('name', 'New Project')
+        slug = data.get('slug', 'new-project')
+        project_type = data.get('project_type', (self.org.get('project_types') or ['ios'])[0])
+        description = data.get('description', '')
+        agent_ids = data.get('agent_ids') or []
+        pid = self.state.exec(
+            "INSERT OR IGNORE INTO projects(slug,name,project_type,description) VALUES(?,?,?,?)",
+            (slug, name, project_type, description),
+        )
+        for agent_id in agent_ids:
+            self.state.exec("INSERT OR IGNORE INTO project_agents(project_id,agent_id) VALUES(?,?)", (pid, agent_id))
+        dispatch_result = self.dispatch_project_prompt(pid, name, project_type, description, agent_ids)
+        return {'ok': True, 'id': pid, 'hermes_dispatch': dispatch_result}
 
     # --- projects ------------------------------------------------------------
     def update_project(self, data):
@@ -441,6 +599,8 @@ class H(BaseHTTPRequestHandler):
             return self.sendj(APP.start_install_tool_job(data.get('package')))
         if p == '/api/pull-model/start':
             return self.sendj(APP.start_pull_model_job(data.get('model')))
+        if p == '/api/install-hermes/start':
+            return self.sendj(APP.start_install_hermes_job())
 
         # Synchronous variants kept for compatibility / scripting.
         if p == '/api/install-tool':
@@ -476,23 +636,25 @@ class H(BaseHTTPRequestHandler):
         if p == '/api/backup-hermes':
             return self.sendj(actions.backup_hermes(APP.home))
         if p == '/api/model-source':
-            APP.state.patch(model_source=data.get('source', 'local'), frontier_models=data.get('frontier_models', {}))
+            # frontier_api_keys are stored locally only to drive `hermes config set`
+            # (which itself routes them straight into Hermes's own .env) — Dispatch
+            # never echoes them back to the UI once saved.
+            existing_keys = APP.state.setup.get('frontier_api_keys') or {}
+            existing_keys.update(data.get('frontier_api_keys') or {})
+            APP.state.patch(
+                model_source=data.get('source', 'local'),
+                frontier_models=data.get('frontier_models', {}),
+                frontier_api_keys=existing_keys,
+            )
             return self.sendj({'ok': True})
 
         if p == '/api/project':
-            name = data.get('name', 'New Project')
-            slug = data.get('slug', 'new-project')
-            ptype = data.get('project_type', (APP.org.get('project_types') or ['ios'])[0])
-            description = data.get('description', '')
-            pid = APP.state.exec("INSERT OR IGNORE INTO projects(slug,name,project_type,description) VALUES(?,?,?,?)", (slug, name, ptype, description))
-            for agent_id in data.get('agent_ids') or []:
-                APP.state.exec("INSERT OR IGNORE INTO project_agents(project_id,agent_id) VALUES(?,?)", (pid, agent_id))
-            APP._dispatch_to_hermes(pid, 'project', slug, {
-                'name': name, 'description': description, 'project_type': ptype,
-                'agents': data.get('agent_ids') or [],
-                'prompt': f"New project '{name}' ({ptype}). {description or 'No description yet.'}",
-            })
-            return self.sendj({'ok': True, 'id': pid})
+            return self.sendj(APP.create_project(data))
+        if p == '/api/project-dispatch':
+            pid = data.get('id')
+            if not pid:
+                return self.sendj({'ok': False, 'stderr': 'Missing project id'}, 400)
+            return self.sendj(APP.dispatch_project_prompt(int(pid)))
         if p == '/api/project-update':
             return self.sendj(APP.update_project(data))
         if p == '/api/project-archive':
@@ -575,6 +737,7 @@ def main():
     a = ap.parse_args()
 
     APP = App(a.package_root, a.home)
+    APP.port = a.port
     APP.rescan()
     srv = ThreadingHTTPServer(('127.0.0.1', a.port), H)
     url = f'http://127.0.0.1:{a.port}'

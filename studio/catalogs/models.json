@@ -1,34 +1,37 @@
 {
   "models": [
     {
-      "id": "qwen3:4b-q4_K_M",
+      "id": "llama3.2:3b",
       "role": "general",
       "ram_min_gb": 8,
       "ram_ideal_gb": 10,
-      "disk_gb": 3.0,
-      "quality": 72,
+      "disk_gb": 2.0,
+      "quality": 70,
       "speed": 98,
-      "notes": "Fast general worker for constrained machines."
+      "context_length": 128000,
+      "notes": "Fast general worker for constrained machines. Natively 128K context, comfortably clears Hermes Agent's 64K minimum (unlike the Qwen3 dense family, which defaults to 40,960 on Ollama and fails Hermes's init check)."
     },
     {
-      "id": "qwen3:8b-q4_K_M",
+      "id": "llama3.1:8b",
       "role": "general",
       "ram_min_gb": 12,
       "ram_ideal_gb": 16,
-      "disk_gb": 5.2,
+      "disk_gb": 4.7,
       "quality": 82,
-      "speed": 88,
-      "notes": "Recommended general model for 16 GB Apple Silicon."
+      "speed": 85,
+      "context_length": 128000,
+      "notes": "Recommended general model for 16 GB Apple Silicon. Natively 128K context, comfortably clears Hermes Agent's 64K minimum (unlike the Qwen3 dense family, which defaults to 40,960 on Ollama and fails Hermes's init check)."
     },
     {
-      "id": "qwen3:14b-q4_K_M",
+      "id": "mistral-nemo:12b",
       "role": "general",
       "ram_min_gb": 20,
       "ram_ideal_gb": 24,
-      "disk_gb": 9.0,
-      "quality": 87,
-      "speed": 67,
-      "notes": "Stronger general reasoning for 24+ GB."
+      "disk_gb": 7.1,
+      "quality": 86,
+      "speed": 70,
+      "context_length": 128000,
+      "notes": "Stronger general reasoning for 24+ GB. Natively 128K context, comfortably clears Hermes Agent's 64K minimum (unlike the Qwen3 dense family, which defaults to 40,960 on Ollama and fails Hermes's init check)."
     },
     {
       "id": "qwen2.5-coder:3b-instruct-q4_K_M",

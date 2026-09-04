@@ -219,13 +219,21 @@ function agentCountForProject(pid) {
   return (D.project_agents || []).filter((pa) => pa.project_id === pid).length;
 }
 
+const PROJECT_STATUS_PILL = { archived: 'warn', in_progress: 'good', planning: 'accent', active: 'accent' };
+function projectHermesLine(p) {
+  const r = p.hermes_result;
+  if (!r) return 'Not sent to Hermes yet.';
+  if (r.ok) return `Sent to Hermes (${esc(r.target || 'chief_of_staff')}) — working.`;
+  return `Hermes dispatch failed: ${esc(r.stderr || 'unknown error')}`;
+}
 function renderProjects() {
   $('#ccProjects').innerHTML = D.projects.map((p) => `<div class="card" data-project="${p.id}" style="cursor:pointer">
     <b>${esc(p.name)}</b>
     <span class="pill">${esc(p.project_type)}</span>
-    <span class="pill ${p.status === 'archived' ? 'warn' : 'accent'}">${esc(p.status)}</span>
+    <span class="pill ${PROJECT_STATUS_PILL[p.status] || 'accent'}">${esc(p.status)}</span>
     <span class="pill">${agentCountForProject(p.id)} agent(s)</span>
     <p class="muted" style="font-size:12.5px;margin-top:8px">${esc((p.description || '').slice(0, 90)) || 'No description yet — click to add one.'}${(p.description || '').length > 90 ? '…' : ''}</p>
+    <p class="muted" style="font-size:11px;margin-top:4px">${projectHermesLine(p)}</p>
   </div>`).join('') || '<div class="empty-state">No projects yet.</div>';
   $$('[data-project]').forEach((c) => c.onclick = () => openProjectDialog(Number(c.dataset.project)));
   $('#newProjectAgents').innerHTML = D.agents.map((a) => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.department)}</option>`).join('') || '<option disabled>Activate a roster first</option>';
@@ -236,10 +244,12 @@ $('#addProjectBtn').onclick = async () => {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'project';
   const description = $('#newProjectDesc').value.trim();
   const agent_ids = Array.from($('#newProjectAgents').selectedOptions).map((o) => o.value);
-  await api('/api/project', { method: 'POST', body: JSON.stringify({ name, slug, description, agent_ids }) });
+  const r = await api('/api/project', { method: 'POST', body: JSON.stringify({ name, slug, description, agent_ids }) });
   $('#newProjectName').value = '';
   $('#newProjectDesc').value = '';
   await load();
+  const d = r.hermes_dispatch;
+  if (d && !d.ok) alert(`Project created, but Hermes dispatch failed: ${d.stderr || 'unknown error'}\n\nYou can retry from the project's detail view.`);
 };
 
 let openProjectId = null;
@@ -253,6 +263,7 @@ function openProjectDialog(id) {
   $('#pdDescription').value = p.description || '';
   $('#pdMeta').textContent = `Created ${p.created_at || '—'}${p.archived_at ? ' · Archived ' + p.archived_at : ''}`;
   $('#pdArchive').textContent = p.status === 'archived' ? 'Unarchive' : 'Archive';
+  $('#pdHermesStatus').textContent = projectHermesLine(p);
   renderProjectAgents(id);
   renderProjectFileAgentOptions(id);
   renderProjectFiles(id);
@@ -349,6 +360,21 @@ $('#pdSave').onclick = async () => {
   await api('/api/project-update', { method: 'POST', body: JSON.stringify({ id: openProjectId, description: $('#pdDescription').value }) });
   $('#projectDialog').close();
   await load();
+};
+$('#pdSendHermes').onclick = async () => {
+  const btn = $('#pdSendHermes');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  // Save whatever's in the prompt box first, so the dispatch uses the latest text.
+  await api('/api/project-update', { method: 'POST', body: JSON.stringify({ id: openProjectId, description: $('#pdDescription').value }) });
+  const r = await api('/api/project-dispatch', { method: 'POST', body: JSON.stringify({ id: openProjectId }) });
+  $('#pdHermesStatus').textContent = r.ok
+    ? `Sent to Hermes (${esc(r.target || 'chief_of_staff')}) — working.`
+    : `Hermes dispatch failed: ${esc(r.stderr || 'unknown error')}`;
+  btn.disabled = false;
+  btn.textContent = 'Send to Hermes';
+  D = await api('/api/command-center');
+  renderProjects();
 };
 $('#pdArchive').onclick = async () => {
   const p = D.projects.find((x) => x.id === openProjectId);

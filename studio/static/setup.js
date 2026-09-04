@@ -5,7 +5,19 @@ let step = 0;
 const TOTAL_STEPS = 7;
 let modelSource = 'local';
 let frontierModels = {}; // { general: {provider, model}, coder: {...}, embedding: {...} }
-const PROVIDERS = ['OpenAI', 'Anthropic', 'Google', 'Other'];
+let frontierApiKeys = {}; // { anthropic: '(entered this session)', ... } — never holds the real value after save
+let frontierKeysSet = []; // providers that already have a saved key, per the server (no raw values)
+// Provider ids match hermes_client.PROVIDER_ENV_KEY exactly — Dispatch writes
+// these straight to Hermes via `hermes config set`, so the id here has to be
+// the real provider id, not just a display label.
+const PROVIDERS = [
+  { id: 'anthropic', label: 'Anthropic (Claude)' },
+  { id: 'openai-api', label: 'OpenAI' },
+  { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'xai', label: 'xAI (Grok)' },
+  { id: 'minimax', label: 'MiniMax' },
+  { id: 'gemini', label: 'Google (Gemini)' },
+];
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
@@ -78,6 +90,7 @@ async function load(fresh = false) {
   selectedTypes = (S.setup && S.setup.project_types) || (S.organization && S.organization.project_types) || ['ios'];
   modelSource = (S.setup && S.setup.model_source) || 'local';
   frontierModels = (S.setup && S.setup.frontier_models) || {};
+  frontierKeysSet = (S.setup && S.setup.frontier_api_keys_set) || [];
   render();
 }
 
@@ -114,7 +127,7 @@ function renderTypeGrid() {
       <div class="type-desc">${meta.desc}</div>
     </button>`;
   }).join('');
-  $$('.type-card').forEach((b) => b.onclick = () => toggleType(b.dataset.type));
+  $$('#typeGrid .type-card').forEach((b) => b.onclick = () => toggleType(b.dataset.type));
   updateAutoSummary();
 }
 
@@ -172,6 +185,30 @@ function renderModels() {
 
   $('#existingModels').innerHTML = (S.existing_models || []).map((m) => `<div class="card"><b>${esc(m.name)}</b><span class="pill ${m.recommended ? 'good' : 'warn'}">${m.recommended ? 'Recommended' : 'Review'}</span><div class="muted" style="margin:6px 0">${esc(m.size || '')}</div>${m.recommended ? '' : `<button class="secondary" data-remove="${esc(m.name)}">Remove…</button>`}</div>`).join('') || '<p class="muted">No Ollama models detected.</p>';
   $$('[data-remove]').forEach((b) => b.onclick = () => openRemoveDialog(b.dataset.remove));
+  renderRankedLocalModels();
+}
+
+const RUNTIME_LABEL = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp-style folder' };
+const FIT_PILL = { comfortable: ['good', 'Comfortable fit'], tight: ['warn', 'Tight fit'], wont_fit: ['bad', "Won't fit"] };
+function renderRankedLocalModels() {
+  const ranked = S.ranked_local_models || [];
+  $('#rankedLocalModels').innerHTML = ranked.length
+    ? ranked.map((m) => {
+        const [pillClass, pillLabel] = FIT_PILL[m.fit] || ['warn', m.fit];
+        const hermesPill = m.meets_hermes_min_context === false
+          ? `<span class="pill bad" title="Hermes Agent requires at least 64,000 tokens of context to initialize a model">Too short for Hermes (${m.context_length.toLocaleString()} ctx)</span>`
+          : m.meets_hermes_min_context === true
+          ? `<span class="pill good">Hermes-ready (${m.context_length.toLocaleString()} ctx)</span>`
+          : '';
+        return `<div class="card">
+          <span class="muted">${esc(RUNTIME_LABEL[m.runtime] || m.runtime)}</span>
+          <b>${esc(m.name || m.id)}</b>
+          <span class="pill ${pillClass}">${pillLabel}</span>
+          ${hermesPill}
+          <div class="muted" style="margin:6px 0;font-size:12px">~${m.estimated_ram_gb} GB estimated RAM${m.disk_gb ? ` · ${m.disk_gb} GB on disk` : ''}</div>
+        </div>`;
+      }).join('')
+    : '<p class="muted">No local models found yet — install Ollama, LM Studio, or point Dispatch at a folder of GGUF files, then rescan.</p>';
 }
 
 async function pullModel(model, btn) {
@@ -205,12 +242,49 @@ function renderOrg() {
 
 function renderHermes() {
   const h = S.scan.hermes || {};
-  $('#hermes').innerHTML = `<div class="card"><b>Hermes Desktop/runtime</b><span class="pill ${h.installed ? 'good' : 'warn'}">${h.installed ? 'Detected' : 'CLI not detected'}</span><div class="muted" style="margin-top:6px">${esc(h.version || '')}</div><div class="muted">${esc((S.integration || {}).message || '')}</div><div class="muted" style="font-size:11px">${esc(h.config_path || '')}</div></div>`;
+  $('#hermes').innerHTML = `<div class="card"><b>Hermes Desktop/runtime</b><span class="pill ${h.installed ? 'good' : 'warn'}">${h.installed ? 'Detected' : 'CLI not detected'}</span><div class="muted" style="margin-top:6px">${esc(h.version || '')}</div><div class="muted">${esc((S.integration || {}).message || '')}</div><div class="muted" style="font-size:11px">${esc(h.config_path || '')}</div>${h.installed ? '' : '<div style="margin-top:10px"><button id="installHermesBtn">Install Hermes</button></div>'}</div>`;
+  $('#installHermesBtn')?.addEventListener('click', installHermes);
+  renderHarnesses();
+}
+
+async function installHermes() {
+  const btn = $('#installHermesBtn');
+  if (btn) btn.disabled = true;
+  const { job_id } = await api('/api/install-hermes/start', { method: 'POST', body: '{}' });
+  await trackJob('#hermesInstallProgress', job_id, 'Installing Hermes (running the official installer)');
+  await load();
+}
+
+const AUTOMATION_PILL = { full: ['good', 'Fully automated'], detect_only: ['warn', 'Detected, manual setup'], manual_only: ['warn', 'Manual only'] };
+function renderHarnesses() {
+  const harnesses = S.scan.harnesses || [];
+  $('#harnessList').innerHTML = harnesses.length
+    ? harnesses.map((h) => {
+        const [pillClass, pillLabel] = AUTOMATION_PILL[h.automation] || ['warn', h.automation];
+        return `<div class="card">
+          <b>${esc(h.name)}</b>
+          <span class="muted" style="font-size:11.5px">${esc(h.vendor)}</span>
+          <span class="pill ${pillClass}" style="margin-top:6px">${pillLabel}</span>
+          <span class="pill ${h.installed ? 'good' : ''}" style="margin-top:6px">${h.installed ? 'Installed' : 'Not detected'}</span>
+          <p class="muted" style="font-size:12px;margin-top:8px">${esc(h.rank_note)}</p>
+          <a href="${esc(h.site)}" target="_blank" style="font-size:11.5px;color:var(--accent)">${esc(h.site)}</a>
+        </div>`;
+      }).join('')
+    : '<p class="muted">No harness catalog loaded.</p>';
 }
 
 /* ---------------- model source (local / frontier / hybrid) ---------------- */
 function renderModelSource() {
-  $$('#modelSourceGrid .type-card').forEach((c) => c.classList.toggle('selected', c.dataset.source === modelSource));
+  $$('#modelSourceGrid .type-card').forEach((c) => {
+    c.classList.toggle('selected', c.dataset.source === modelSource);
+    // Rebind on every render (not just once at load) so this never goes stale
+    // if something else re-renders the wizard body around it.
+    c.onclick = async () => {
+      modelSource = c.dataset.source;
+      renderModelSource();
+      await saveModelSource();
+    };
+  });
   $('#frontierForm').classList.toggle('hidden', modelSource === 'local');
   if (modelSource === 'local') return;
   const roles = ['general', 'coder', 'embedding'];
@@ -219,31 +293,56 @@ function renderModelSource() {
     return `<div class="card">
       <span class="muted">${role.toUpperCase()}</span>
       <label style="display:block;margin:8px 0 4px;font-size:12px" class="muted">Provider</label>
-      <select data-frontier-provider="${role}">${PROVIDERS.map((p) => `<option value="${p}" ${f.provider === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
+      <select data-frontier-provider="${role}">${PROVIDERS.map((p) => `<option value="${p.id}" ${f.provider === p.id ? 'selected' : ''}>${p.label}</option>`).join('')}</select>
       <label style="display:block;margin:8px 0 4px;font-size:12px" class="muted">Model name</label>
-      <input data-frontier-model="${role}" placeholder="e.g. gpt-4.1, claude-sonnet-4.5" value="${esc(f.model || '')}">
+      <input data-frontier-model="${role}" placeholder="e.g. claude-sonnet-4-6, gpt-5.4" value="${esc(f.model || '')}">
     </div>`;
-  }).join('');
+  }).join('') + renderApiKeyFields();
   $$('[data-frontier-provider]').forEach((el) => el.onchange = () => saveModelSource());
   $$('[data-frontier-model]').forEach((el) => el.onchange = () => saveModelSource());
+  $$('[data-frontier-key]').forEach((el) => el.onchange = () => saveModelSource());
+}
+
+function renderApiKeyFields() {
+  // One key field per distinct provider actually selected across the three
+  // roles — Dispatch writes it straight into Hermes's .env via
+  // `hermes config set <ENV_VAR> ...` on finish, it's never stored as plaintext
+  // in Dispatch's own state, and never re-displayed once saved.
+  const usedProviders = [...new Set(['general', 'coder', 'embedding']
+    .map((role) => document.querySelector(`[data-frontier-provider="${role}"]`)?.value || (frontierModels[role] || {}).provider)
+    .filter(Boolean))];
+  if (!usedProviders.length) return '';
+  return `<div class="card" style="grid-column:1/-1">
+    <span class="muted">API KEYS</span>
+    <p class="muted" style="font-size:11.5px;margin:4px 0 10px">Saved straight into Hermes's own <code>~/.hermes/.env</code> when you finish setup — Dispatch doesn't keep a plaintext copy of its own.</p>
+    ${usedProviders.map((pid) => {
+      const label = PROVIDERS.find((p) => p.id === pid)?.label || pid;
+      const already = frontierKeysSet.includes(pid);
+      return `<label style="display:block;margin:8px 0 4px;font-size:12px" class="muted">${esc(label)} API key${already ? ' (already saved — leave blank to keep it)' : ''}</label>
+        <input type="password" data-frontier-key="${pid}" placeholder="${already ? '••••••••••' : 'paste key here'}">`;
+    }).join('')}
+  </div>`;
 }
 
 async function saveModelSource() {
   const roles = ['general', 'coder', 'embedding'];
   roles.forEach((role) => {
-    const provider = document.querySelector(`[data-frontier-provider="${role}"]`)?.value || 'OpenAI';
+    const provider = document.querySelector(`[data-frontier-provider="${role}"]`)?.value || 'anthropic';
     const model = document.querySelector(`[data-frontier-model="${role}"]`)?.value || '';
     frontierModels[role] = { provider, model };
   });
-  await api('/api/model-source', { method: 'POST', body: JSON.stringify({ source: modelSource, frontier_models: frontierModels }) });
+  const keys = {};
+  $$('[data-frontier-key]').forEach((el) => { if (el.value) keys[el.dataset.frontierKey] = el.value; });
+  await api('/api/model-source', {
+    method: 'POST',
+    body: JSON.stringify({ source: modelSource, frontier_models: frontierModels, frontier_api_keys: keys }),
+  });
+  // Clear key inputs immediately after a successful save so the raw value
+  // never lingers in the DOM/memory longer than it has to.
+  $$('[data-frontier-key]').forEach((el) => { el.value = ''; });
+  await load();
   renderAgentChecklist();
 }
-
-$$('#modelSourceGrid .type-card').forEach((c) => c.onclick = async () => {
-  modelSource = c.dataset.source;
-  renderModelSource();
-  await saveModelSource();
-});
 
 $('#hermesTabFresh').onclick = () => {
   $('#hermesTabFresh').classList.replace('ghost', 'secondary');
@@ -342,27 +441,57 @@ $('#generateIntegration').onclick = async () => {
 $('#finishBtn').onclick = async () => {
   $('#finishBtn').disabled = true;
   $('#finishBtn').textContent = 'Activating roster…';
+  // Open the tab synchronously, still inside the click's user gesture — Safari
+  // (and other browsers) silently block window.open() once an `await` has run,
+  // even a moment earlier in the same handler.
+  const win = window.open('about:blank', '_blank');
   const r = await api('/api/apply-org', { method: 'POST', body: '{}' });
-  const win = window.open('/command-center', '_blank');
-  const openNote = win
-    ? 'Command Center opened in a new tab. This setup tab is safe to close.'
-    : 'Pop-ups may be blocked — open the Command Center manually if a new tab did not appear.';
+  let openNote;
+  if (win) {
+    win.location.href = '/command-center';
+    openNote = 'Command Center opened in a new tab. This setup tab is safe to close.';
+  } else {
+    openNote = 'Your browser blocked the pop-up — click "Open Command Center" below (this tab will stay open).';
+  }
 
   let hermesNote = '';
   const hp = r && r.hermes_profiles;
   if (hp === null || hp === undefined) {
-    hermesNote = ' Hermes CLI was not detected on PATH, so agent profiles were not auto-created — use the checklist above to create them manually.';
+    hermesNote = ' Hermes CLI was not detected on PATH — nothing was auto-configured. See the manual steps above for the screen Hermes shows on first launch.';
   } else {
     const parts = [];
     if (hp.created && hp.created.length) parts.push(`created ${hp.created.length} new Hermes agent profile${hp.created.length === 1 ? '' : 's'}`);
     if (hp.refreshed && hp.refreshed.length) parts.push(`refreshed ${hp.refreshed.length} existing profile${hp.refreshed.length === 1 ? '' : 's'}`);
     if (hp.failed && hp.failed.length) parts.push(`${hp.failed.length} failed (see checklist)`);
     hermesNote = parts.length ? ` Hermes: ${parts.join(', ')}.` : ' Hermes: no agent profiles to create.';
+
+    const mcp = r.hermes_mcp;
+    if (mcp) {
+      hermesNote += mcp.ok
+        ? ` MCP tools: ${mcp.action}${mcp.added ? ' (' + mcp.added.join(', ') + ')' : ''}.`
+        : ` MCP tools: setup failed (${esc(mcp.stderr || 'unknown error')}) — you can still merge hermes-mcp.yaml by hand.`;
+    }
+    const mm = r.hermes_main_model;
+    if (mm) {
+      if (mm.ok) {
+        hermesNote += ` Main model: ${mm.provider}/${mm.model}, configured automatically — restart Hermes to pick it up.`;
+      } else if (mm.reason === 'context_below_minimum') {
+        hermesNote += ` Main model: skipped — ${esc(mm.stderr)}`;
+      } else {
+        hermesNote += ` Main model: automatic setup failed — check ${esc(mm.provider || '')} and try again, or set it from the screen Hermes shows on launch.`;
+      }
+    }
   }
 
-  $('#finishNote').textContent = openNote + hermesNote;
+  const fallbackLink = win ? '' : ' <a href="/command-center" target="_blank">Open Command Center</a>';
+  $('#finishNote').innerHTML = esc(openNote + hermesNote) + fallbackLink;
   $('#finishBtn').textContent = 'Command Center launched ✓';
-  setTimeout(() => { try { window.close(); } catch (e) {} }, 1200);
+  if (win) {
+    setTimeout(() => { try { window.close(); } catch (e) {} }, 1200);
+  } else {
+    $('#finishBtn').disabled = false;
+    $('#finishBtn').textContent = 'Launch Command Center →';
+  }
 };
 
 goToStep(0);

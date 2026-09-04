@@ -27,6 +27,23 @@ from pathlib import Path
 DEFAULT_PORT = 9119
 TIMEOUT_SECONDS = 20
 
+# Documented (hermes-agent.nousresearch.com/docs/user-guide/configuration)
+# API-key env vars for each frontier provider that has a plain, non-OAuth
+# path. `hermes config set <ENV_VAR> <value>` routes secrets to ~/.hermes/.env
+# automatically — Dispatch never writes API keys into config.yaml itself.
+PROVIDER_ENV_KEY = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai-api": "OPENAI_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "xai": "XAI_API_KEY",
+    "minimax": "MINIMAX_API_KEY",
+    "gemini": "GOOGLE_API_KEY",
+    "google": "GOOGLE_API_KEY",
+}
+# Ollama's OpenAI-compatible local endpoint (see docs: "Custom Endpoint" flow).
+LOCAL_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+
 
 def available() -> bool:
     return shutil.which("hermes") is not None
@@ -45,6 +62,39 @@ def _run(args, timeout=TIMEOUT_SECONDS) -> dict:
         }
     except Exception as e:  # pragma: no cover - defensive
         return {"ok": False, "stderr": str(e)}
+
+
+def config_set(key: str, value: str, profile: str | None = None, timeout=TIMEOUT_SECONDS) -> dict:
+    """`hermes [-p <profile>] config set <key> <value>` — the documented,
+    non-interactive way to write Hermes config. Routes secrets to .env and
+    everything else to config.yaml automatically; scope to one agent's
+    profile with `profile=<agent_id>` for a per-agent override."""
+    args = (["-p", profile] if profile else []) + ["config", "set", key, str(value)]
+    return _run(args, timeout=timeout)
+
+
+def configure_main_model(provider: str, model: str, api_key: str | None = None,
+                          base_url: str | None = None, profile: str | None = None) -> dict:
+    """Point Hermes's main model at either a local custom endpoint (Ollama)
+    or a frontier API provider, fully non-interactively. Pass `profile` to
+    scope the change to one agent's profile instead of the global config."""
+    steps = {}
+    provider_key = (provider or "").lower()
+    if provider_key in ("ollama", "custom", "local"):
+        steps["provider"] = config_set("model.provider", "custom", profile)
+        steps["base_url"] = config_set("model.base_url", base_url or LOCAL_OLLAMA_BASE_URL, profile)
+        steps["model"] = config_set("model.default", model, profile)
+    else:
+        steps["provider"] = config_set("model.provider", provider_key, profile)
+        steps["model"] = config_set("model.default", model, profile)
+        if api_key:
+            env_key = PROVIDER_ENV_KEY.get(provider_key)
+            if env_key:
+                steps["api_key"] = config_set(env_key, api_key, profile)
+            else:
+                steps["api_key"] = {"ok": False, "stderr": f'No known API-key env var for provider "{provider}".'}
+    ok = all(s.get("ok") for s in steps.values())
+    return {"ok": ok, "provider": provider, "model": model, "profile": profile, "steps": steps}
 
 
 def serve_status(host="127.0.0.1", port=DEFAULT_PORT) -> dict:
@@ -91,13 +141,18 @@ def build_persona(agent: dict) -> str:
     return "\n".join(lines)
 
 
-def create_profile(profile_id: str, persona_markdown: str) -> dict:
+def create_profile(profile_id: str, persona_markdown: str, clone: bool = False) -> dict:
     """Create a Hermes profile for a Dispatch agent role if it doesn't already exist,
-    and (re)write its persona to SOUL.md either way."""
+    and (re)write its persona to SOUL.md either way. With clone=True, the new
+    profile is created via `--clone` so it inherits the *current* global
+    config.yaml (model, mcp_servers, etc.) instead of starting from Hermes's
+    own defaults — call this only after the global config is already set up
+    the way you want every agent to start."""
     if profile_exists(profile_id):
         _write_soul(profile_id, persona_markdown)
         return {"ok": True, "stdout": "profile already existed; refreshed SOUL.md"}
-    res = _run(["profile", "create", profile_id])
+    args = ["profile", "create", profile_id] + (["--clone"] if clone else [])
+    res = _run(args)
     if res.get("ok"):
         _write_soul(profile_id, persona_markdown)
     return res

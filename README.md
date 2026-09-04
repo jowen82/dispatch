@@ -1,100 +1,50 @@
-<div align="center">
-
 # Dispatch
 
-**A local-first setup wizard and command center that builds an adaptive AI development organization on your Mac — no cloud, no subscription, no telemetry.**
+A local-first setup and command-center package for building an adaptive autonomous software-development organization on macOS. It discovers hardware, installed local models and developer tools; recommends a lean model/runtime configuration; installs only missing dependencies after approval; generates a project-specific agent organization; and provides a local GUI for setup, service-desk tickets, approvals, project state and health.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-6ea8ff.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS-9b7bff.svg)](#requirements)
-[![Python](https://img.shields.io/badge/python-3.9%2B-41d0c4.svg)](#requirements)
-[![Runs 100%25 Local](https://img.shields.io/badge/runs-100%25%20local-4ade80.svg)](#why-local-first)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-f5c451.svg)](#contributing)
+## What this package does today
 
-[Live site](https://jowen82.github.io/dispatch/) · [Quick start](#quick-start) · [FAQ](#faq)
+- Detects macOS hardware, RAM, free disk, Xcode, Homebrew, Ollama, Hermes, Git/GitHub CLI, Node and security tools, with a live progress bar and estimated time remaining while the scan runs.
+- Detects Ollama models and recommends general, coding and embedding models based on available unified memory.
+- Also finds every other local model on the machine — LM Studio and llama.cpp-style model folders, not just Ollama — and ranks all of them best-to-worst by how well each one fits your available RAM (a fit ranking, not a benchmarked quality score). Ollama models are also checked against Hermes Agent's own hard 64,000-token context minimum and flagged "Too short for Hermes" if they fall short (the default Qwen3 dense models on Ollama report 40,960 tokens and fail this check) — Dispatch's own recommended general-purpose model was corrected to a long-context Llama 3.x/Mistral Nemo model for exactly this reason, and it verifies the actual pulled model's context at setup time before wiring it into Hermes rather than assuming the catalog is still accurate.
+- Never deletes a model without an explicit confirmation.
+- Installs missing Homebrew tools and pulls recommended Ollama models from the GUI, each with a progress bar and an ETA that improves the more you use it (it learns from your own install/pull history).
+- Opens GitHub authentication in Terminal/browser and verifies the result.
+- Lets you pick every deployment target you're shipping to (iOS, macOS, web, Android, game, full-stack, AI/ML) as multi-select cards, then decides organization size and complexity for you — that's not a dial you manage.
+- Uses a large dormant agent catalog and activates only roles applicable to the selected deployment target(s).
+- Persists setup state and resumes after restart.
+- Finishes the Setup Wizard by activating the roster and opening the Command Center in its own window/tab, separate from the wizard.
+- The Command Center is the ongoing home for everything else: a drag-and-drop kanban board, agents, service-desk tickets, approvals, projects, models, tools, Hermes integration status and diagnostics.
+- Projects have a real detail view — click a card to read/edit its description, see when it was created, assign or remove agents, archive it, or delete it.
+- Lets you choose during setup whether your agents run on local Ollama models, hosted frontier models (Anthropic, OpenAI, OpenRouter, xAI, MiniMax, Gemini), or a hybrid of both per role.
+- When the `hermes` CLI is on PATH, finishing setup configures Hermes for real, non-interactively, with no manual steps: it merges Dispatch's MCP servers (filesystem, context7, playwright, penpot) into `~/.hermes/config.yaml` (backing it up first, and only ever adding servers you don't already have — never touching anything else in the file), points the main model at local Ollama or your chosen frontier provider via the documented `hermes config set` command, and creates a cloned Hermes profile per agent so every role starts with that same config already applied. In hybrid mode, per-role frontier overrides are applied on top of each agent's profile individually. If the CLI isn't available, the wizard falls back to step-by-step manual instructions mapped to the exact screen Hermes shows on first launch, plus a generated checklist.
+- Walks through Hermes setup for both a fresh install and an already-installed config, as separate instruction tracks.
+- Talks to a locally running Hermes Agent for real: every Command Center action (tasks, tickets, approvals, project files) is sent live with `hermes send --to <agent>`. Each card shows whether Hermes actually received it, not just that it was queued.
+- Creating a project immediately sends its description to Hermes as a real kickoff prompt telling it to start working now — including the exact `POST /api/task` and `/api/task-update` calls Hermes should make against Dispatch's own local API so its own progress shows up on the Command Center Kanban board as it works, not just after the fact. A project only flips from "planning" to "in_progress" once that dispatch actually succeeds, and a "Send to Hermes" button on the project's detail view lets you resend the same prompt on demand (e.g. after editing it, or after Hermes wasn't running the first time).
+- Also mirrors every action into a durable `projects/<slug>/hermes-inbox/`/`hermes-outbox/` file-based audit trail (the same folder the generated filesystem MCP server points Hermes at), so nothing is lost if Hermes isn't running when an action happens — and this fallback still works even without the CLI installed.
+- Generates Hermes integration files safely without overwriting an unknown Hermes configuration.
+- Produces a diagnostic/support report with common secrets redacted.
+- If Hermes isn't installed, the wizard can fetch and run its official installer for you with one click (macOS/Linux verified against the documented one-liner; Windows via its `install.ps1` is included but not yet tested on real Windows hardware).
+- Detects and ranks other agent harnesses beyond Hermes — OpenClaw and DeepSeek Harness are detected (not yet auto-configured the way Hermes is); Grok Bot is listed for comparison but has no local config surface Dispatch can drive.
+- Experimental Windows support: hardware detection and a PowerShell `bootstrap.ps1`/`run.ps1` pair mirroring the macOS flow. Untested on real Windows — please report back what breaks.
 
-</div>
+## Important boundary
 
-<br>
+Dispatch does write to your real `~/.hermes/config.yaml` when it auto-configures Hermes, but conservatively: it always backs the file up first, and it only ever *adds* its own MCP servers and model settings via the documented `hermes config set` command — it never deletes or rewrites anything else already in your config. Secrets (frontier API keys) go straight into Hermes's own `.env` the same way, never into Dispatch's local state.
 
-![Dispatch — local-first setup wizard and command center for macOS](docs/assets/og-image.png)
+Live dispatch depends on the `hermes` CLI being on PATH and (for the liveness pill in the Command Center) `hermes serve` running locally. Without the CLI, every action still queues in the file-based `hermes-inbox/` audit trail — nothing is lost, it just isn't sent automatically.
 
-## What is Dispatch?
+## Run
 
-Dispatch is a macOS setup wizard and ongoing command center for running an **AI-assisted software development organization entirely on your own machine**. It scans your hardware, recommends the right local models for your available RAM, installs only the developer tools you're missing, and builds an "adaptive organization" of specialist agent roles sized to the deployment targets you pick — iOS, macOS, web, Android, game, full-stack, or AI/ML. Everything after setup lives in a Command Center: a drag-and-drop kanban board, a service desk, change approvals, project files, and a live agent roster that talks to a real, locally running [Hermes Agent](https://hermes-agent.nousresearch.com/).
-
-It's built for developers, MSPs, and small teams who want the leverage of an AI development org without sending code, prompts, or infrastructure data to a third-party cloud.
-
-## Why local-first?
-
-- **Zero cloud cost.** Models run through [Ollama](https://ollama.com) on your own Apple Silicon; there's no per-token bill.
-- **No telemetry.** State lives in a local SQLite database under `~/Dispatch/`. Nothing phones home.
-- **You keep control.** Model removal requires typing the exact model name to confirm. Tool installs and model pulls show a live progress bar with an estimated time remaining.
-- **Right-sized automatically.** Pick the deployment targets you're shipping to as cards — the studio decides organization complexity and role count for you.
-
-## Features
-
-- **Hardware & tool discovery** — chip, RAM, free disk, Homebrew, Ollama, Hermes, GitHub CLI, Node, and security tooling (`semgrep`, `gitleaks`, `osv-scanner`), all with a progress bar and ETA while scanning.
-- **Model recommendation engine** — proposes a general, coding, and embedding model matched to your available unified memory, and evaluates any models you already have installed.
-- **Multi-select deployment cards** — choose every platform you're shipping to; complexity and headcount are derived, not configured.
-- **Adaptive agent organization** — a large dormant agent catalog activates only the roles relevant to your selected deployment targets and computed complexity.
-- **Command Center** — kanban board, service-desk tickets, change approvals, a project list with real detail views (description, archive, delete, agent assignment, file attachments), and a live agent roster, all backed by local SQLite.
-- **Local, frontier, or hybrid models** — choose during setup whether agents run on local Ollama models, hosted frontier models, or a mix per role.
-- **Real Hermes integration** — finishing setup auto-creates a Hermes profile (with a role-specific persona) for every agent in your roster when the `hermes` CLI is available, and every Command Center action — tasks, tickets, approvals, and uploaded project files — is sent live to the right agent with `hermes send`. Each card shows whether Hermes actually received it.
-- **Project attachments** — drop an image, document, or any file onto a project and Dispatch hands it straight to the assigned agent, alongside a durable file-based audit trail if Hermes isn't running.
-- **Redacted diagnostics** — one-click support report with secrets and tokens stripped out.
-
-## Quick start
+Double-click `bootstrap.command` in Finder, or run:
 
 ```bash
-git clone https://github.com/jowen82/dispatch.git
-cd dispatch
 chmod +x bootstrap.command
 ./bootstrap.command
 ```
 
-Or double-click `bootstrap.command` in Finder. The wizard opens at `http://127.0.0.1:8787`. Setup state persists under `~/Dispatch/`, so `run.command` resumes where you left off — including reopening the Command Center.
+The bootstrap opens the setup GUI in your browser at `http://127.0.0.1:8787`.
 
-### Requirements
+Setup state is stored under `~/Dispatch/` and can be resumed by running `run.command`.
 
-- macOS (Apple Silicon recommended)
-- Python 3.9+
-- [Homebrew](https://brew.sh) for tool installs
-- [Ollama](https://ollama.com) for local models (the wizard will tell you if it's missing)
-- [Hermes Agent](https://hermes-agent.nousresearch.com/) with the `hermes` CLI on PATH, if you want live agent dispatch (optional — everything else works without it)
-
-## How it works
-
-![Architecture: Setup Wizard, Local Runtimes, and Adaptive Org all feed a local Command Center](docs/assets/architecture.png)
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design notes, including the Hermes integration and the agent-catalog activation model.
-
-## FAQ
-
-**Is this free?**
-Yes. Dispatch is MIT-licensed and free to use, fork, and modify. The only costs are whatever local models and disk space you choose to install.
-
-**Does it send my code or prompts to the cloud?**
-No. Model inference runs locally through Ollama, agent dispatch runs locally through Hermes, and all studio state (projects, tickets, approvals, agent roster, uploaded files) is stored on your Mac.
-
-**What platforms can it plan for?**
-iOS, macOS, web, Android, game development, full-stack, and AI/ML — selectable as multiple deployment-type cards in the Setup Wizard.
-
-**Do I need a powerful Mac to run it?**
-No. The model recommender scales its suggestions to your available RAM, from lightweight 4B-class models up to larger models on 24GB+ machines.
-
-**Can I remove a model it installed?**
-Yes, but only with an explicit confirmation step — you must type the exact model name before it's removed. Nothing is deleted automatically.
-
-**What is the Command Center?**
-The ongoing dashboard the Setup Wizard opens once setup is complete: a kanban board, service-desk tickets, approvals, projects (with file attachments), the active agent roster, and diagnostics — all in one place, separate from the wizard.
-
-**Does it actually talk to Hermes, or just queue files?**
-Both. When the `hermes` CLI is on PATH, Dispatch sends live via `hermes send --to <agent>` and shows you the real result on every card. Either way, every action is also mirrored into a file-based inbox as a durable audit trail, so nothing is lost if Hermes isn't running.
-
-## Contributing
-
-Issues and pull requests are welcome. Please run `pytest tests/` before submitting a PR.
-
-## License
-
-[MIT](LICENSE) © Jeff Owen
+> **Upgrading from an earlier build (Local Development Studio / Local AI Dev Studio)?** The app is now called **Dispatch** and the state directory moved to `~/Dispatch/`. Copy your old `studio.db` and `setup-state.json` into the new folder to carry your data forward, or just re-run the Setup Wizard.
