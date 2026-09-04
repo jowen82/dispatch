@@ -2,11 +2,12 @@
 let S = {};
 let selectedTypes = [];
 let step = 0;
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 let modelSource = 'local';
 let frontierModels = {}; // { general: {provider, model}, coder: {...}, embedding: {...} }
 let frontierApiKeys = {}; // { anthropic: '(entered this session)', ... } — never holds the real value after save
 let frontierKeysSet = []; // providers that already have a saved key, per the server (no raw values)
+let agentModelOverrides = {}; // { agent_id: model_id_or_name } — per-agent override of its role's default model
 // Provider ids match hermes_client.PROVIDER_ENV_KEY exactly — Dispatch writes
 // these straight to Hermes via `hermes config set`, so the id here has to be
 // the real provider id, not just a display label.
@@ -91,6 +92,7 @@ async function load(fresh = false) {
   modelSource = (S.setup && S.setup.model_source) || 'local';
   frontierModels = (S.setup && S.setup.frontier_models) || {};
   frontierKeysSet = (S.setup && S.setup.frontier_api_keys_set) || [];
+  agentModelOverrides = (S.setup && S.setup.agent_model_overrides) || {};
   render();
 }
 
@@ -98,10 +100,12 @@ function render() {
   renderSystem();
   renderTypeGrid();
   renderTools();
+  renderGithubAuth();
   renderModels();
   renderOrg();
   renderHermes();
   renderModelSource();
+  renderProviderAuth();
   renderAgentChecklist();
   renderVisualPanel();
 }
@@ -139,6 +143,8 @@ async function toggleType(id) {
     selectedTypes = [...selectedTypes, id];
   }
   renderTypeGrid();
+  renderTools();
+  renderHarnesses();
   if (selectedTypes.length) {
     S.organization = await api('/api/plan', { method: 'POST', body: JSON.stringify({ project_types: selectedTypes }) });
     renderOrg();
@@ -161,10 +167,33 @@ function updateAutoSummary() {
 
 function renderTools() {
   const tools = S.scan.tools || [];
-  $('#toolsList').innerHTML = tools.map((t) => `<div class="card"><b>${esc(t.id)}</b><span class="pill ${t.installed ? 'good' : 'warn'}">${t.installed ? 'Installed' : 'Missing'}</span><div class="muted" style="margin:6px 0">${esc(t.version || '')}</div>${!t.installed ? `<button data-tool="${esc(t.brew)}">Install</button>` : ''}</div>`).join('');
+  // The dynamic breakdown is real, not decorative: every tool's "groups" comes
+  // straight from studio/catalogs/tools.json, the same data that already
+  // gates what gets scanned/installed — "all" tools apply no matter what's
+  // selected, the rest only matter for the deployment type(s) they're tagged with.
+  const relevant = selectedTypes.length
+    ? tools.filter((t) => (t.groups || []).includes('all') || (t.groups || []).some((g) => selectedTypes.includes(g)))
+    : tools;
+  const extra = selectedTypes.length ? tools.filter((t) => !relevant.includes(t)) : [];
+  const breakdown = $('#toolsForType');
+  if (breakdown) {
+    if (!selectedTypes.length) {
+      breakdown.style.display = 'none';
+    } else {
+      breakdown.style.display = '';
+      const names = selectedTypes.map((t) => TYPE_META[t]?.name || t).join(', ');
+      breakdown.innerHTML = `<span>ℹ️</span><div><b>${relevant.length} of ${tools.length} tools apply to ${esc(names)}.</b><span class="muted" style="display:block;font-size:12px;margin-top:2px">${extra.length ? `${extra.map((t) => esc(t.id)).join(', ')} ${extra.length === 1 ? 'is' : 'are'} only needed for other deployment targets — install it if you add one later.` : 'Every scanned tool applies to what you picked.'}</span></div>`;
+    }
+  }
+  $('#toolsList').innerHTML = tools.map((t) => `<div class="card ${selectedTypes.length && !relevant.includes(t) ? 'dim' : ''}"><b>${esc(t.id)}</b><span class="pill ${t.installed ? 'good' : 'warn'}">${t.installed ? 'Installed' : 'Missing'}</span><div class="muted" style="margin:6px 0">${esc(t.version || '')}</div>${!t.installed ? `<button data-tool="${esc(t.brew)}">Install</button>` : ''}</div>`).join('');
   $$('[data-tool]').forEach((b) => b.onclick = () => installTool(b.dataset.tool, b));
+}
+
+function renderGithubAuth() {
+  const host = $('#auth');
+  if (!host) return;
   const gh = S.scan.github || {};
-  $('#auth').innerHTML = `<div class="card"><b>GitHub</b><span class="pill ${gh.authenticated ? 'good' : 'warn'}">${gh.authenticated ? 'Authenticated' : 'Not authenticated'}</span><div class="formrow" style="margin-top:10px"><button id="ghAuth">${gh.authenticated ? 'Re-authenticate' : 'Connect GitHub'}</button><button id="ghVerify" class="secondary">Verify</button></div></div>`;
+  host.innerHTML = `<div class="card"><b>GitHub</b><span class="pill ${gh.authenticated ? 'good' : 'warn'}">${gh.authenticated ? 'Authenticated' : 'Not authenticated'}</span><div class="formrow" style="margin-top:10px"><button id="ghAuth">${gh.authenticated ? 'Re-authenticate' : 'Connect GitHub'}</button><button id="ghVerify" class="secondary">Verify</button></div></div>`;
   $('#ghAuth')?.addEventListener('click', async () => { await api('/api/github-auth', { method: 'POST', body: '{}' }); });
   $('#ghVerify')?.addEventListener('click', () => rescan());
 }
@@ -191,10 +220,21 @@ function renderModels() {
 
 const RUNTIME_LABEL = { ollama: 'Ollama', lmstudio: 'LM Studio', llamacpp: 'llama.cpp-style folder' };
 const FIT_PILL = { comfortable: ['good', 'Comfortable fit'], tight: ['warn', 'Tight fit'], wont_fit: ['bad', "Won't fit"] };
+let showIncompatibleModels = false;
 function renderRankedLocalModels() {
   const ranked = S.ranked_local_models || [];
-  $('#rankedLocalModels').innerHTML = ranked.length
-    ? ranked.map((m) => {
+  const incompatible = ranked.filter((m) => m.meets_hermes_min_context === false);
+  const visible = showIncompatibleModels ? ranked : ranked.filter((m) => m.meets_hermes_min_context !== false);
+  const toggleBtn = $('#toggleIncompatibleModels');
+  if (toggleBtn) {
+    toggleBtn.style.display = incompatible.length ? '' : 'none';
+    toggleBtn.textContent = showIncompatibleModels
+      ? `Hide ${incompatible.length} harness-incompatible model(s)`
+      : `Show ${incompatible.length} harness-incompatible model(s)`;
+    toggleBtn.onclick = () => { showIncompatibleModels = !showIncompatibleModels; renderRankedLocalModels(); };
+  }
+  $('#rankedLocalModels').innerHTML = visible.length
+    ? visible.map((m) => {
         const [pillClass, pillLabel] = FIT_PILL[m.fit] || ['warn', m.fit];
         const hermesPill = m.meets_hermes_min_context === false
           ? `<span class="pill bad" title="Hermes Agent requires at least 64,000 tokens of context to initialize a model">Too short for Hermes (${m.context_length.toLocaleString()} ctx)</span>`
@@ -209,7 +249,7 @@ function renderRankedLocalModels() {
           <div class="muted" style="margin:6px 0;font-size:12px">~${m.estimated_ram_gb} GB estimated RAM${m.disk_gb ? ` · ${m.disk_gb} GB on disk` : ''}</div>
         </div>`;
       }).join('')
-    : '<p class="muted">No local models found yet — install Ollama, LM Studio, or point Dispatch at a folder of GGUF files, then rescan.</p>';
+    : (ranked.length ? '<p class="muted">Every local model found is below Hermes\'s context floor — use "Show" above to see them anyway.</p>' : '<p class="muted">No local models found yet — install Ollama, LM Studio, or point Dispatch at a folder of GGUF files, then rescan.</p>');
 }
 
 async function pullModel(model, btn) {
@@ -237,9 +277,56 @@ function renderOrg() {
   const o = S.organization || {};
   const by = {};
   (o.agents || []).forEach((a) => (by[a.department] ??= []).push(a));
-  $('#orgSummary').innerHTML = `<div class="card"><b>${(o.project_types || []).map((t) => TYPE_META[t]?.name || t).join(' + ') || '—'} · ${esc(o.complexity || '')}</b><span class="muted">${o.agent_count || 0} logical roles activate. This does not load one model per agent — roles share the model pool sized in the previous step.</span></div>`;
-  $('#orgList').innerHTML = Object.entries(by).map(([d, as]) => `<div class="dept"><h3>${esc(d)}</h3>${as.map((a) => `<div class="agent-row"><b>${esc(a.name)}</b><span class="muted">${esc(a.level)}</span><span class="pill">${esc(a.model_capability)}</span></div>`).join('')}</div>`).join('');
+  $('#orgSummary').innerHTML = `<div class="card"><b>${(o.project_types || []).map((t) => TYPE_META[t]?.name || t).join(' + ') || '—'} · ${esc(o.complexity || '')}</b><span class="muted">${o.agent_count || 0} logical roles activate. This does not load one model per agent — roles share the model pool sized below, unless you override a specific one.</span></div>`;
+
+  const deptSel = $('#applyModelDept');
+  if (deptSel) {
+    const depts = Object.keys(by);
+    const prev = deptSel.value;
+    deptSel.innerHTML = depts.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join('') || '<option disabled>No departments yet</option>';
+    if (depts.includes(prev)) deptSel.value = prev;
+  }
+
+  $('#orgList').innerHTML = Object.entries(by).map(([d, as]) => `<div class="dept"><h3>${esc(d)}</h3>${as.map((a) => {
+    const roleDefault = resolveRoleDefault(a);
+    const override = agentModelOverrides[a.id];
+    return `<div class="agent-row agent-row-override">
+      <div><b>${esc(a.name)}</b><span class="muted" style="display:block;font-size:11px">${esc(a.level)}</span></div>
+      <span class="pill">${esc(a.model_capability)}</span>
+      ${modelSource === 'local'
+        ? `<select data-agent-override="${esc(a.id)}"><option value="">Role default (${esc(roleDefault)})</option>${(S.ranked_local_models || []).map((m) => `<option value="${esc(m.id || m.name)}" ${override === (m.id || m.name) ? 'selected' : ''}>${esc(m.name || m.id)}</option>`).join('')}</select>`
+        : `<input data-agent-override="${esc(a.id)}" placeholder="Role default (${esc(roleDefault)})" value="${esc(override || '')}">`}
+    </div>`;
+  }).join('')}</div>`).join('') || '<p class="muted">Select at least one deployment type to generate a roster.</p>';
+
+  $$('[data-agent-override]').forEach((el) => {
+    const handler = () => saveAgentOverride(el.dataset.agentOverride, el.value);
+    el.addEventListener('change', handler);
+  });
 }
+
+async function saveAgentOverride(agentId, model) {
+  agentModelOverrides = { ...agentModelOverrides };
+  if (model) agentModelOverrides[agentId] = model; else delete agentModelOverrides[agentId];
+  await api('/api/agent-model-override', { method: 'POST', body: JSON.stringify({ agent_id: agentId, model: model || null }) });
+  renderAgentChecklist();
+}
+
+$('#applyModelToAll').onclick = async () => {
+  agentModelOverrides = {};
+  await api('/api/agent-model-override', { method: 'POST', body: JSON.stringify({ reset_all: true }) });
+  renderOrg();
+  renderAgentChecklist();
+};
+$('#applyModelToDept').onclick = async () => {
+  const dept = $('#applyModelDept').value;
+  if (!dept) return;
+  const o = S.organization || {};
+  (o.agents || []).filter((a) => a.department === dept).forEach((a) => delete agentModelOverrides[a.id]);
+  await api('/api/agent-model-override', { method: 'POST', body: JSON.stringify({ reset_department: dept }) });
+  renderOrg();
+  renderAgentChecklist();
+};
 
 function renderHermes() {
   const h = S.scan.hermes || {};
@@ -257,12 +344,23 @@ async function installHermes() {
 }
 
 const AUTOMATION_PILL = { full: ['good', 'Fully automated'], detect_only: ['warn', 'Detected, manual setup'], manual_only: ['warn', 'Manual only'] };
+const AUTOMATION_RANK = { full: 0, detect_only: 1, manual_only: 2 };
 function renderHarnesses() {
   const harnesses = S.scan.harnesses || [];
+  const platform = (S.scan.system && S.scan.system.platform || '').toLowerCase();
+  // "Suggested" is a real computation, not a static label: the most-automated
+  // harness that actually runs on this machine's platform, ranked by how much
+  // of its own setup Dispatch can drive for you — not a per-deployment-type
+  // guess, since none of these harnesses actually differ by what you're
+  // shipping (they're general dev-agent CLIs, same catalog fact every time).
+  const compatible = harnesses.filter((h) => !platform || (h.platforms || []).some((p) => platform.includes(p)));
+  const suggestedId = compatible.slice().sort((a, b) => (AUTOMATION_RANK[a.automation] ?? 9) - (AUTOMATION_RANK[b.automation] ?? 9))[0]?.id;
   $('#harnessList').innerHTML = harnesses.length
     ? harnesses.map((h) => {
         const [pillClass, pillLabel] = AUTOMATION_PILL[h.automation] || ['warn', h.automation];
-        return `<div class="card">
+        const suggested = h.id === suggestedId;
+        return `<div class="card ${suggested ? 'suggested-harness' : ''}">
+          ${suggested ? '<span class="pill gold" style="margin-bottom:6px">★ Suggested for this Mac</span>' : ''}
           <b>${esc(h.name)}</b>
           <span class="muted" style="font-size:11.5px">${esc(h.vendor)}</span>
           <span class="pill ${pillClass}" style="margin-top:6px">${pillLabel}</span>
@@ -298,31 +396,9 @@ function renderModelSource() {
       <label style="display:block;margin:8px 0 4px;font-size:12px" class="muted">Model name</label>
       <input data-frontier-model="${role}" placeholder="e.g. claude-sonnet-4-6, gpt-5.4" value="${esc(f.model || '')}">
     </div>`;
-  }).join('') + renderApiKeyFields();
+  }).join('');
   $$('[data-frontier-provider]').forEach((el) => el.onchange = () => saveModelSource());
   $$('[data-frontier-model]').forEach((el) => el.onchange = () => saveModelSource());
-  $$('[data-frontier-key]').forEach((el) => el.onchange = () => saveModelSource());
-}
-
-function renderApiKeyFields() {
-  // One key field per distinct provider actually selected across the three
-  // roles — Dispatch writes it straight into Hermes's .env via
-  // `hermes config set <ENV_VAR> ...` on finish, it's never stored as plaintext
-  // in Dispatch's own state, and never re-displayed once saved.
-  const usedProviders = [...new Set(['general', 'coder', 'embedding']
-    .map((role) => document.querySelector(`[data-frontier-provider="${role}"]`)?.value || (frontierModels[role] || {}).provider)
-    .filter(Boolean))];
-  if (!usedProviders.length) return '';
-  return `<div class="card" style="grid-column:1/-1">
-    <span class="muted">API KEYS</span>
-    <p class="muted" style="font-size:11.5px;margin:4px 0 10px">Saved straight into Hermes's own <code>~/.hermes/.env</code> when you finish setup — Dispatch doesn't keep a plaintext copy of its own.</p>
-    ${usedProviders.map((pid) => {
-      const label = PROVIDERS.find((p) => p.id === pid)?.label || pid;
-      const already = frontierKeysSet.includes(pid);
-      return `<label style="display:block;margin:8px 0 4px;font-size:12px" class="muted">${esc(label)} API key${already ? ' (already saved — leave blank to keep it)' : ''}</label>
-        <input type="password" data-frontier-key="${pid}" placeholder="${already ? '••••••••••' : 'paste key here'}">`;
-    }).join('')}
-  </div>`;
 }
 
 async function saveModelSource() {
@@ -332,21 +408,93 @@ async function saveModelSource() {
     const model = document.querySelector(`[data-frontier-model="${role}"]`)?.value || '';
     frontierModels[role] = { provider, model };
   });
-  const keys = {};
-  $$('[data-frontier-key]').forEach((el) => { if (el.value) keys[el.dataset.frontierKey] = el.value; });
   await api('/api/model-source', {
     method: 'POST',
-    body: JSON.stringify({ source: modelSource, frontier_models: frontierModels, frontier_api_keys: keys }),
+    body: JSON.stringify({ source: modelSource, frontier_models: frontierModels }),
   });
-  // Clear key inputs immediately after a successful save so the raw value
-  // never lingers in the DOM/memory longer than it has to.
-  $$('[data-frontier-key]').forEach((el) => { el.value = ''; });
   await load();
   renderAgentChecklist();
 }
 
+/* ---------------- provider credentials (Integration step) ---------------- */
+// Hermes's own documentation only describes a plain API-key path for every
+// provider below (see hermes_client.PROVIDER_ENV_KEY) — no provider has a
+// documented OAuth device-flow through Hermes today. So "OAuth" is offered
+// honestly: the button is there because Jeff asked to support both
+// mechanisms, but it says plainly that none apply yet rather than pretending
+// to do something Hermes doesn't actually support.
+function providersInUse() {
+  return [...new Set(['general', 'coder', 'embedding'].map((role) => (frontierModels[role] || {}).provider).filter(Boolean))];
+}
+function renderProviderAuth() {
+  const host = $('#providerAuthList');
+  if (!host) return;
+  const used = providersInUse();
+  if (modelSource === 'local' || !used.length) {
+    host.innerHTML = '<p class="muted" style="font-size:12.5px">No frontier providers assigned to a role yet — pick "Frontier" or "Hybrid" and assign a provider per role in Organization first.</p>';
+    return;
+  }
+  host.innerHTML = used.map((pid) => {
+    const label = PROVIDERS.find((p) => p.id === pid)?.label || pid;
+    const already = frontierKeysSet.includes(pid);
+    return `<div class="card" style="margin-bottom:10px">
+      <b>${esc(label)}</b>
+      <span class="pill ${already ? 'good' : 'warn'}" style="margin-top:4px">${already ? 'Key saved' : 'No key saved yet'}</span>
+      <p class="muted" style="font-size:11.5px;margin:6px 0">Saved straight into Hermes's own <code>~/.hermes/.env</code> — Dispatch never keeps a plaintext copy.</p>
+      <div class="formrow">
+        <input type="password" data-provider-key="${pid}" placeholder="${already ? '••••••••••  (leave blank to keep it)' : 'paste API key here'}" style="min-width:220px">
+        <button class="secondary" data-verify-provider="${pid}">Verify</button>
+        <button class="ghost" data-oauth-provider="${pid}" disabled title="No provider here documents an OAuth device-flow through Hermes yet">OAuth (not available)</button>
+      </div>
+      <p class="muted" id="verifyResult-${pid}" style="font-size:11.5px;margin-top:6px"></p>
+    </div>`;
+  }).join('');
+  $$('[data-verify-provider]').forEach((btn) => btn.onclick = () => verifyProviderKey(btn.dataset.verifyProvider, btn));
+  $$('[data-provider-key]').forEach((el) => el.onchange = () => saveProviderKey(el.dataset.providerKey, el.value));
+}
+
+async function saveProviderKey(pid, value) {
+  if (!value) return;
+  await api('/api/model-source', {
+    method: 'POST',
+    body: JSON.stringify({ source: modelSource, frontier_models: frontierModels, frontier_api_keys: { [pid]: value } }),
+  });
+  const el = document.querySelector(`[data-provider-key="${pid}"]`);
+  if (el) el.value = '';
+  await load();
+}
+
+async function verifyProviderKey(pid, btn) {
+  const el = document.querySelector(`[data-provider-key="${pid}"]`);
+  const resultEl = $(`#verifyResult-${pid}`);
+  const key = el?.value;
+  if (!key && !frontierKeysSet.includes(pid)) {
+    if (resultEl) { resultEl.textContent = 'Enter a key first.'; resultEl.style.color = 'var(--bad, #d33)'; }
+    return;
+  }
+  // A saved-but-blank key can't be re-verified without asking for it again —
+  // Dispatch never keeps the raw value around to reuse silently.
+  if (!key) {
+    if (resultEl) { resultEl.textContent = 'Paste the key again to verify it (Dispatch doesn\'t keep the raw value once saved).'; resultEl.style.color = ''; }
+    return;
+  }
+  const role = ['general', 'coder', 'embedding'].find((r) => (frontierModels[r] || {}).provider === pid);
+  const model = (frontierModels[role] || {}).model || '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+  try {
+    const r = await api('/api/verify-provider-key', { method: 'POST', body: JSON.stringify({ provider: pid, api_key: key, model }) });
+    if (resultEl) {
+      resultEl.style.color = r.ok ? 'var(--good)' : 'var(--bad, #d33)';
+      resultEl.textContent = r.ok ? 'Verified — Hermes reached this provider successfully.' : `Failed: ${r.stderr || 'unknown error'}`;
+    }
+    if (r.ok) await saveProviderKey(pid, key);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Verify'; }
+  }
+}
+
 /* ---------------- agent setup checklist ---------------- */
-function resolveAgentModel(agent) {
+function resolveRoleDefault(agent) {
   const role = agent.model_capability || 'general';
   const rec = S.recommendation || {};
   if (modelSource === 'frontier' || modelSource === 'hybrid') {
@@ -355,6 +503,12 @@ function resolveAgentModel(agent) {
     if (modelSource === 'frontier') return '(frontier model not set)';
   }
   return rec[role] ? rec[role].id : '(no local model recommended)';
+}
+
+function resolveAgentModel(agent) {
+  const override = agentModelOverrides[agent.id];
+  if (override) return `${override} (override)`;
+  return resolveRoleDefault(agent);
 }
 
 function agentChecklistText() {
@@ -421,12 +575,12 @@ function renderVisualPanel() {
       ['💾', (sys.disk_free_gb || '?') + ' GB free', 'Storage headroom'],
       ['🦙', `${(S.scan.models || []).length} Ollama model(s)`, 'Already installed'],
     ]),
-    // 1: Deployment
-    () => visualHTML('What you\'re shipping', 'Every target you select shapes the roster Dispatch builds next.', selectedTypes.length
+    // 1: Deployment + Tools
+    () => visualHTML('What you\'re shipping', 'Every target you select shapes the roster and tools Dispatch builds next.', selectedTypes.length
       ? selectedTypes.map((id) => [TYPE_META[id]?.icon || '📦', TYPE_META[id]?.name || id, TYPE_META[id]?.desc || ''])
       : [['🧭', 'Nothing selected yet', 'Pick at least one deployment target on the left']]),
-    // 2: Tools
-    () => visualHTML('Developer tools', 'Anything already on your PATH is left exactly as it is.', (S.scan.tools || []).slice(0, 6).map((t) => [t.installed ? '✅' : '⬜', t.name || t.id, t.installed ? 'Installed' : 'Will be installed'])),
+    // 2: Harness
+    () => visualHTML('Agent harness', 'Ranked by how much of its setup Dispatch can actually drive for you.', (S.scan.harnesses || []).slice(0, 4).map((h) => [h.installed ? '✅' : '⬜', h.name, h.automation === 'full' ? 'Fully automated' : h.automation === 'detect_only' ? 'Manual setup' : 'Manual only'])),
     // 3: Models
     () => visualHTML('Model plan', 'What Dispatch will run locally, sized to this Mac\'s RAM.', [
       ['🧠', (S.recommendation && S.recommendation.general && S.recommendation.general.id) || '—', 'General role'],
@@ -445,7 +599,11 @@ function renderVisualPanel() {
       ['🔌', (S.scan.harnesses || []).filter((h) => h.installed).length + ' detected', 'Agent harnesses'],
       ['🧩', 'filesystem · context7 · playwright · penpot', 'MCP tools wired in'],
     ]),
-    // 6: Finish
+    // 6: GitHub
+    () => visualHTML('GitHub', 'Where your agents will push branches and open pull requests.', [
+      ['🐙', (S.scan.github && S.scan.github.authenticated) ? 'Authenticated' : 'Not connected yet', 'gh CLI status'],
+    ]),
+    // 7: Finish
     () => visualHTML('Ready to go', 'One click configures Hermes and opens the Command Center.', [
       ['✅', `${(S.organization && S.organization.agents && S.organization.agents.length) || 0} agents`, 'About to be activated'],
       ['🚀', 'Command Center', 'Where you\'ll manage everything next'],

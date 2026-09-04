@@ -23,11 +23,12 @@
   <div class="steps enter enter-1" id="steps">
     <div class="step" data-step="0"><span class="n">1</span>System</div>
     <div class="step" data-step="1"><span class="n">2</span>Deployment</div>
-    <div class="step" data-step="2"><span class="n">3</span>Tools</div>
+    <div class="step" data-step="2"><span class="n">3</span>Harness</div>
     <div class="step" data-step="3"><span class="n">4</span>Models</div>
     <div class="step" data-step="4"><span class="n">5</span>Organization</div>
     <div class="step" data-step="5"><span class="n">6</span>Integration</div>
-    <div class="step" data-step="6"><span class="n">7</span>Finish</div>
+    <div class="step" data-step="6"><span class="n">7</span>GitHub</div>
+    <div class="step" data-step="7"><span class="n">8</span>Finish</div>
   </div>
 
   <div class="panel enter enter-2">
@@ -41,7 +42,7 @@
       <div class="formrow"><button id="rescan">Rescan System</button></div>
     </section>
 
-    <!-- Step 1: Deployment type(s) -->
+    <!-- Step 1: Deployment type(s) + Tools -->
     <section class="wstep hidden" data-step="1">
       <h1>What are you shipping?</h1>
       <p class="lead">Pick every deployment target this workspace needs. Select as many as apply — the studio builds one coherent organization that covers all of them.</p>
@@ -50,16 +51,21 @@
         <div class="badge">🧭</div>
         <div><b id="autoSummaryTitle">Select at least one deployment type</b><span id="autoSummarySub">Organization size and complexity are decided for you based on your selection.</span></div>
       </div>
-    </section>
 
-    <!-- Step 2: Tools -->
-    <section class="wstep hidden" data-step="2">
-      <h1>Developer &amp; security tools</h1>
-      <p class="lead">Command-line tools this workflow depends on. Anything already on your PATH is left alone.</p>
+      <h2 style="margin-top:24px">Developer &amp; security tools</h2>
+      <p class="lead" style="font-size:13.5px">Command-line tools this workflow depends on. Anything already on your PATH is left alone.</p>
+      <div id="toolsForType" class="notice info" style="display:none"></div>
       <div id="toolsList" class="cards"></div>
       <div id="installProgress"></div>
-      <h2 style="margin-top:22px">Authentication</h2>
-      <div id="auth"></div>
+    </section>
+
+    <!-- Step 2: Harness -->
+    <section class="wstep hidden" data-step="2">
+      <h1>Agent harness</h1>
+      <p class="lead">Dispatch is built around Hermes — full automatic setup, below. Other harnesses are detected and ranked for your selected deployment target(s), but not yet auto-configured; research your options here, then finish committing to one in Integration.</p>
+      <div id="harnessList" class="cards"></div>
+      <div id="hermes"></div>
+      <div id="hermesInstallProgress"></div>
     </section>
 
     <!-- Step 3: Models -->
@@ -71,53 +77,64 @@
       <h2 style="margin-top:22px">Detected models</h2>
       <div id="existingModels" class="cards"></div>
 
-      <h2 style="margin-top:22px">Every local model found on this machine, ranked</h2>
+      <div class="formrow" style="margin-top:18px">
+        <h2 style="margin:0">Every local model found on this machine, ranked</h2>
+        <button class="ghost" id="toggleIncompatibleModels" style="font-size:12px"></button>
+      </div>
       <p class="lead" style="font-size:13.5px">Not just Ollama — LM Studio and llama.cpp-style model folders too. Ranked by how well each one fits your available RAM, best to worst. This is a fit ranking, not a benchmarked quality score — Dispatch can't grade an arbitrary file's actual output quality.</p>
       <div id="rankedLocalModels" class="cards"></div>
     </section>
 
-    <!-- Step 4: Organization (auto, read-only) -->
+    <!-- Step 4: Organization -->
     <section class="wstep hidden" data-step="4">
       <h1>Adaptive organization</h1>
-      <p class="lead">Complexity and role count are derived automatically from what you're shipping — they aren't dials to second-guess. This is the roster the studio proposes.</p>
+      <p class="lead">Complexity and role count are derived automatically from what you're shipping — they aren't dials to second-guess. Pick a default model for every role, then override specific agents on the right if one needs something different.</p>
       <div id="orgSummary"></div>
-      <div id="orgList"></div>
+      <div class="org-layout">
+        <div class="org-model-defaults">
+          <h2 style="margin-top:0">Default model</h2>
+          <div class="type-grid" id="modelSourceGrid" style="grid-template-columns:repeat(3,1fr)">
+            <button type="button" class="type-card" data-source="local">
+              <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div class="type-icon">💻</div>
+              <div class="type-name">Local models</div>
+              <div class="type-desc">Use the Ollama models recommended earlier. No API keys, no per-token cost.</div>
+            </button>
+            <button type="button" class="type-card" data-source="frontier">
+              <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div class="type-icon">☁️</div>
+              <div class="type-name">Frontier models</div>
+              <div class="type-desc">Use hosted API models (OpenAI, Anthropic, Google, etc.) for every role.</div>
+            </button>
+            <button type="button" class="type-card" data-source="hybrid">
+              <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <div class="type-icon">🔀</div>
+              <div class="type-name">Hybrid</div>
+              <div class="type-desc">Local by default; override specific roles with a frontier model where it's worth it.</div>
+            </button>
+          </div>
+          <div id="frontierForm" class="cards hidden" style="grid-template-columns:1fr"></div>
+          <div class="formrow" style="margin-top:14px">
+            <button id="applyModelToAll">Apply to All Agents</button>
+            <select id="applyModelDept" style="min-width:160px"></select>
+            <button class="secondary" id="applyModelToDept">Apply to Department</button>
+          </div>
+          <p class="muted" style="font-size:11px;margin-top:6px">"Apply" clears any per-agent override so those agents fall back to this default. API keys and verification for frontier providers live in the Integration step, next.</p>
+        </div>
+        <div class="org-roster">
+          <h2 style="margin-top:0">Roster</h2>
+          <div id="orgList"></div>
+        </div>
+      </div>
     </section>
 
     <!-- Step 5: Hermes integration -->
     <section class="wstep hidden" data-step="5">
       <h1>Hermes integration</h1>
 
-      <h2 style="margin-top:0">Agent harnesses</h2>
-      <p class="lead" style="font-size:13.5px">Dispatch is built around Hermes — full automatic setup, below. Other harnesses are detected and ranked for this use case, but not yet auto-configured.</p>
-      <div id="harnessList" class="cards"></div>
-
-      <div id="hermes"></div>
-      <div id="hermesInstallProgress"></div>
-
-      <h2 style="margin-top:24px">Which models will your agents use?</h2>
-      <p class="lead" style="font-size:13.5px">This decides what the generated Hermes config and agent checklist point each role at. You can change this later and regenerate.</p>
-      <div class="type-grid" id="modelSourceGrid" style="grid-template-columns:repeat(3,1fr)">
-        <button type="button" class="type-card" data-source="local">
-          <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="type-icon">💻</div>
-          <div class="type-name">Local models</div>
-          <div class="type-desc">Use the Ollama models recommended in the previous step. No API keys, no per-token cost.</div>
-        </button>
-        <button type="button" class="type-card" data-source="frontier">
-          <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="type-icon">☁️</div>
-          <div class="type-name">Frontier models</div>
-          <div class="type-desc">Use hosted API models (OpenAI, Anthropic, Google, etc.) for every role.</div>
-        </button>
-        <button type="button" class="type-card" data-source="hybrid">
-          <div class="type-check"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="type-icon">🔀</div>
-          <div class="type-name">Hybrid</div>
-          <div class="type-desc">Local by default; override specific roles with a frontier model where it's worth it.</div>
-        </button>
-      </div>
-      <div id="frontierForm" class="cards hidden" style="grid-template-columns:repeat(3,1fr)"></div>
+      <h2 style="margin-top:0">Frontier provider credentials</h2>
+      <p class="lead" style="font-size:13.5px">Only shown for providers you actually assigned to a role back in Organization. Enter a key and verify it with a real test call, or use OAuth where a provider documents a device-flow login — whichever's easier.</p>
+      <div id="providerAuthList"></div>
 
       <div class="notice"><span>✓</span><div>Hermes is configured automatically and non-interactively when you click <b>Launch Command Center →</b> on the last step — MCP tools, main model, and every agent's profile. Nothing to do by hand here. If the <code>hermes</code> CLI isn't on PATH, or something didn't apply cleanly, use the manual fallback below.</div></div>
       <div class="formrow" style="margin-top:10px">
@@ -132,8 +149,15 @@
       <div id="agentChecklist"></div>
     </section>
 
-    <!-- Step 6: Finish -->
+    <!-- Step 6: GitHub -->
     <section class="wstep hidden" data-step="6">
+      <h1>GitHub</h1>
+      <p class="lead">Dispatch uses the <code>gh</code> CLI so your agents can push branches and open pull requests on your behalf. Connect it here, last, once everything else is configured.</p>
+      <div id="auth"></div>
+    </section>
+
+    <!-- Step 7: Finish -->
+    <section class="wstep hidden" data-step="7">
       <div class="finish-screen">
         <div class="check-orb"><svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <h1>You're set up</h1>

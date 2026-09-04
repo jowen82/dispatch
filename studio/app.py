@@ -236,6 +236,15 @@ class App:
             "SELECT *, (status='working' AND (julianday('now') - julianday(updated_at)) * 86400 <= 120) AS recently_active "
             "FROM agents ORDER BY department,name"
         )
+        catalog_types = {a['id']: a.get('project_types', []) for a in self.agents.get('agents', [])}
+        for a in agents:
+            a['project_types'] = catalog_types.get(a['id'], [])
+        # Delegation wires on the org chart only ever reflect a delegation an
+        # agent actually reported via /api/delegation — this window just controls
+        # how long a wire stays lit, the same self-expiry pattern as "working".
+        delegations = self.state.rows(
+            "SELECT * FROM agent_delegations WHERE (julianday('now') - julianday(created_at)) * 86400 <= 90 ORDER BY id DESC"
+        )
         return {
             'projects': projects,
             'tasks': tasks,
@@ -245,6 +254,7 @@ class App:
             'files': files,
             'events': self.state.rows('SELECT * FROM events ORDER BY id DESC LIMIT 100'),
             'agents': agents,
+            'delegations': delegations,
             'project_agents': self.state.rows('SELECT * FROM project_agents'),
             'organization': self.org,
             'recommendation': self.rec,
@@ -385,7 +395,40 @@ class App:
                           f"{', assigned to ' + t['assigned_agent'] if t['assigned_agent'] else ''}."
                           f"{(' Comment: ' + comment) if comment else ''}",
             })
+            # A 'launch' ticket is the go-ahead for a project created via "Queue
+            # Project" — approving/resolving/starting it is what actually kicks
+            # the project off, exactly like clicking "Start Project" would have.
+            if t.get('category') == 'launch' and t['status'] in ('approved', 'resolved', 'in_progress') and t.get('project_id'):
+                proj = self.state.rows('SELECT * FROM projects WHERE id=?', (t['project_id'],))
+                if proj and proj[0]['status'] == 'queued':
+                    self.dispatch_project_prompt(t['project_id'])
         return {'ok': True}
+
+    def record_delegation(self, data):
+        """An agent (via Hermes) reporting that it just handed a piece of work to
+        a sibling agent. This is the one channel Dispatch has for agent-to-agent
+        delegation — Hermes turns happen outside Dispatch entirely, so without an
+        agent choosing to report this, Dispatch has no way to know it occurred.
+        The org chart only ever lights up a wire for a delegation reported this
+        way — never a simulated one."""
+        from_agent, to_agent = data.get('from_agent'), data.get('to_agent')
+        if not from_agent or not to_agent:
+            return {'ok': False, 'stderr': 'Missing from_agent or to_agent'}
+        project_id = data.get('project_id')
+        note = data.get('note', '')
+        i = self.state.exec(
+            "INSERT INTO agent_delegations(project_id,from_agent,to_agent,note) VALUES(?,?,?,?)",
+            (project_id, from_agent, to_agent, note),
+        )
+        # Same self-expiring "working" signal used for a normal dispatch, so the
+        # receiving agent's node lights up exactly like it would from Dispatch's
+        # own dispatch — this is a real handoff, not a cosmetic-only event.
+        short = f"Delegated from {from_agent}" + (f": {note}" if note else "")
+        self.state.exec(
+            "UPDATE agents SET status='working', activity=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (short, to_agent),
+        )
+        return {'ok': True, 'id': i}
 
     def add_ticket_note(self, data):
         """A note/comment on a ticket's activity thread — from Jeff via the Command
@@ -476,7 +519,10 @@ class App:
             '"priority": "P2", "agent": "<your agent id>"}. As you pick up or finish a task, update '
             f'it with a POST to {base_url}/api/task-update using the "key" returned when you created '
             'it (e.g. {"key": "TASK-1", "status": "in_progress"} then later {"status": "done"}). '
-            'Keep the board current as you go so progress is visible without anyone asking.'
+            'Keep the board current as you go so progress is visible without anyone asking. '
+            f'If you hand a task to another agent yourself, report it with a POST to {base_url}/api/delegation: '
+            f'{{"project_id": {project_id}, "from_agent": "<your agent id>", "to_agent": "<their agent id>", '
+            '"note": "<what you handed off>"}. That\'s the only way the org chart can show a real delegation happening.'
         )
         result = self._dispatch_to_hermes(project_id, 'project', slug, {
             'name': name, 'description': description, 'project_type': project_type,
@@ -484,24 +530,51 @@ class App:
         })
         if result.get('ok'):
             self.state.exec(
-                "UPDATE projects SET status='in_progress' WHERE id=? AND status IN ('planning','active')",
+                "UPDATE projects SET status='in_progress' WHERE id=? AND status IN ('planning','active','queued')",
                 (project_id,),
             )
             self.record(f'dispatched project {slug} to Hermes — now in_progress', result)
         return result
 
     def create_project(self, data):
+        """Create a project either way Jeff picks on the creation screen:
+        mode='start' (default) dispatches the kickoff prompt to the Chief of
+        Staff immediately, same as before. mode='queue' creates the project in
+        a 'queued' state plus a ticket (category='launch') asking for a
+        go-ahead — nothing is sent to Hermes until that ticket is approved,
+        at which point update_ticket does the actual dispatch."""
         name = data.get('name', 'New Project')
         slug = data.get('slug', 'new-project')
-        project_type = data.get('project_type', (self.org.get('project_types') or ['ios'])[0])
+        project_types = data.get('project_types') or [data.get('project_type')] or []
+        project_types = [t for t in project_types if t] or [(self.org.get('project_types') or ['ios'])[0]]
+        project_type = '+'.join(project_types)
         description = data.get('description', '')
         agent_ids = data.get('agent_ids') or []
+        mode = data.get('mode', 'start')
+        status = 'queued' if mode == 'queue' else 'planning'
         pid = self.state.exec(
-            "INSERT OR IGNORE INTO projects(slug,name,project_type,description) VALUES(?,?,?,?)",
-            (slug, name, project_type, description),
+            "INSERT OR IGNORE INTO projects(slug,name,project_type,description,status) VALUES(?,?,?,?,?)",
+            (slug, name, project_type, description, status),
         )
         for agent_id in agent_ids:
             self.state.exec("INSERT OR IGNORE INTO project_agents(project_id,agent_id) VALUES(?,?)", (pid, agent_id))
+
+        if mode == 'queue':
+            key = self.state.next_key('tickets', 'LAUNCH')
+            self.state.exec(
+                "INSERT INTO tickets(project_id,key,source,category,priority,title,problem,status,assigned_agent) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (pid, key, 'internal', 'launch', 'P2', f"Start project: {name}",
+                 description or 'No description yet.', 'new', 'chief_of_staff'),
+            )
+            self._dispatch_to_hermes(pid, 'ticket', key, {
+                'title': f"Start project: {name}", 'agent': 'chief_of_staff',
+                'prompt': f"A new project '{name}' ({project_type}) is queued and waiting on your go-ahead before "
+                          f"any work starts. {description or ''} Review it and, when ready, approve ticket {key} "
+                          f"in the Command Center (or ask Jeff to) to kick it off.",
+            })
+            return {'ok': True, 'id': pid, 'queued': True, 'ticket_key': key}
+
         dispatch_result = self.dispatch_project_prompt(pid, name, project_type, description, agent_ids)
         return {'ok': True, 'id': pid, 'hermes_dispatch': dispatch_result}
 
@@ -750,6 +823,11 @@ class H(BaseHTTPRequestHandler):
             return self.sendj({'ok': True, 'files': files, 'status': integration_status()})
         if p == '/api/backup-hermes':
             return self.sendj(actions.backup_hermes(APP.home))
+        if p == '/api/verify-provider-key':
+            result = hermes_client.verify_provider_key(
+                data.get('provider'), data.get('api_key'), data.get('model'),
+            )
+            return self.sendj(result)
         if p == '/api/model-source':
             # frontier_api_keys are stored locally only to drive `hermes config set`
             # (which itself routes them straight into Hermes's own .env) — Dispatch
@@ -762,6 +840,27 @@ class H(BaseHTTPRequestHandler):
                 frontier_api_keys=existing_keys,
             )
             return self.sendj({'ok': True})
+
+        if p == '/api/agent-model-override':
+            # Per-agent model overrides live in setup state (not the agents table)
+            # since they're a setup-time decision, same lifecycle as model_source/
+            # frontier_models. 'agent_id': null model clears that agent's override
+            # (falls back to its role default); 'reset_department' clears every
+            # override for agents in that department — the "Apply to role" action.
+            overrides = dict(APP.state.setup.get('agent_model_overrides') or {})
+            if data.get('reset_department'):
+                dept = data['reset_department']
+                dept_ids = {a['id'] for a in APP.org.get('agents', []) if a.get('department') == dept}
+                overrides = {k: v for k, v in overrides.items() if k not in dept_ids}
+            elif data.get('reset_all'):
+                overrides = {}
+            elif 'agent_id' in data:
+                if data.get('model'):
+                    overrides[data['agent_id']] = data['model']
+                else:
+                    overrides.pop(data['agent_id'], None)
+            APP.state.patch(agent_model_overrides=overrides)
+            return self.sendj({'ok': True, 'agent_model_overrides': overrides})
 
         if p == '/api/project':
             return self.sendj(APP.create_project(data))
@@ -787,6 +886,9 @@ class H(BaseHTTPRequestHandler):
             return self.sendj(APP.create_task(data))
         if p == '/api/task-update':
             return self.sendj(APP.update_task(data))
+
+        if p == '/api/delegation':
+            return self.sendj(APP.record_delegation(data))
 
         if p == '/api/ticket':
             project_id = int(data.get('project_id') or APP.state.ensure_default_project())

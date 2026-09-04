@@ -273,7 +273,7 @@ function renderAgents() {
           const isNew = a.updated_at && _agentLastSeenUpdate[a.id] && _agentLastSeenUpdate[a.id] !== a.updated_at;
           _agentLastSeenUpdate[a.id] = a.updated_at;
           const projectNames = projectNamesFor(a.id);
-          return `<div class="orgchart-node ${a.recently_active ? 'working' : ''} ${isNew ? 'just-dispatched' : ''}">
+          return `<div class="orgchart-node ${a.recently_active ? 'working' : ''} ${isNew ? 'just-dispatched' : ''}" data-agent="${esc(a.id)}">
             <b>${esc(a.name)}</b>
             <div class="role">${esc(a.level || '')}</div>
             <div class="activity">${a.recently_active ? esc(a.activity || 'Working…') : (projectNames[0] ? esc(projectNames[0]) : '')}</div>
@@ -282,7 +282,48 @@ function renderAgents() {
       </div>
     </div>
   `).join('');
+  // Wires need final layout (wrapping flex, so positions vary by window width) —
+  // draw on the next frame once the browser has actually placed the nodes.
+  requestAnimationFrame(renderDelegationWires);
 }
+
+function renderDelegationWires() {
+  const svg = $('#orgchartWires');
+  const wrap = $('#orgchartWrap');
+  if (!svg || !wrap) return;
+  const delegations = D.delegations || [];
+  const wrapRect = wrap.getBoundingClientRect();
+  svg.setAttribute('width', wrapRect.width);
+  svg.setAttribute('height', wrapRect.height);
+  const centerOf = (agentId) => {
+    const el = wrap.querySelector(`.orgchart-node[data-agent="${CSS.escape(String(agentId))}"]`);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { x: r.left - wrapRect.left + r.width / 2, y: r.top - wrapRect.top + r.height / 2 };
+  };
+  // De-dupe so two recent delegations between the same pair only draw one wire.
+  const seen = new Set();
+  const paths = [];
+  for (const d of delegations) {
+    const pairKey = [d.from_agent, d.to_agent].sort().join('::');
+    if (seen.has(pairKey)) continue;
+    const a = centerOf(d.from_agent), b = centerOf(d.to_agent);
+    if (!a || !b) continue; // one side isn't on this org chart (e.g. filtered/unknown agent id)
+    seen.add(pairKey);
+    const midY = (a.y + b.y) / 2;
+    paths.push(`<path class="orgchart-wire" d="M${a.x},${a.y} C${a.x},${midY} ${b.x},${midY} ${b.x},${b.y}"></path>`);
+  }
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="orgchartWireGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#6ea8ff"></stop>
+        <stop offset="100%" stop-color="#9b7bff"></stop>
+      </linearGradient>
+    </defs>
+    ${paths.join('')}
+  `;
+}
+window.addEventListener('resize', () => { if ($('#orgchartWires')) renderDelegationWires(); });
 
 let openTicketKey = null;
 
@@ -426,7 +467,7 @@ function agentCountForProject(pid) {
   return (D.project_agents || []).filter((pa) => pa.project_id === pid).length;
 }
 
-const PROJECT_STATUS_PILL = { archived: 'warn', in_progress: 'good', planning: 'accent', active: 'accent' };
+const PROJECT_STATUS_PILL = { archived: 'warn', in_progress: 'good', planning: 'accent', active: 'accent', queued: 'warn' };
 function projectHermesLine(p) {
   const r = p.hermes_result;
   if (!r) return 'Not sent to Hermes yet.';
@@ -434,7 +475,7 @@ function projectHermesLine(p) {
   return `Hermes dispatch failed: ${esc(r.stderr || 'unknown error')}`;
 }
 const PROJECT_COLS = [
-  { label: 'Planning', match: (p) => ['planning', 'active'].includes(p.status) },
+  { label: 'Planning', match: (p) => ['planning', 'active', 'queued'].includes(p.status) },
   { label: 'In Progress', match: (p) => p.status === 'in_progress' },
   { label: 'Archived', match: (p) => p.status === 'archived' },
 ];
@@ -465,30 +506,89 @@ function renderProjects() {
     </div>`;
   }).join('');
   $$('[data-project]').forEach((c) => c.onclick = () => openProjectDialog(Number(c.dataset.project)));
-  $('#newProjectAgents').innerHTML = D.agents.map((a) => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.department)}</option>`).join('') || '<option disabled>Activate a roster first</option>';
+  renderNewProjectForm();
 
-  const counts = { total: D.projects.length, in_progress: D.projects.filter((p) => p.status === 'in_progress').length, archived: D.projects.filter((p) => p.status === 'archived').length, planning: D.projects.filter((p) => ['planning', 'active'].includes(p.status)).length };
+  const counts = { total: D.projects.length, in_progress: D.projects.filter((p) => p.status === 'in_progress').length, archived: D.projects.filter((p) => p.status === 'archived').length, queued: D.projects.filter((p) => p.status === 'queued').length, planning: D.projects.filter((p) => ['planning', 'active'].includes(p.status)).length };
   $('#ccProjectsSide').innerHTML = `
     <h3>Summary</h3>
     <div class="stat-line"><span class="muted">Total</span><b>${counts.total}</b></div>
     <div class="stat-line"><span class="muted">In progress</span><b>${counts.in_progress}</b></div>
     <div class="stat-line"><span class="muted">Planning</span><b>${counts.planning}</b></div>
+    <div class="stat-line"><span class="muted">Queued (awaiting go-ahead)</span><b>${counts.queued}</b></div>
     <div class="stat-line"><span class="muted">Archived</span><b>${counts.archived}</b></div>
   `;
 }
-$('#addProjectBtn').onclick = async () => {
+
+const DEPLOY_TYPES = [
+  ['ios', 'iOS'], ['macos', 'macOS'], ['android', 'Android'], ['web', 'Web'],
+  ['game', 'Game'], ['ai_ml', 'AI / ML'], ['fullstack', 'Full-stack'],
+];
+let selectedDeployTypes = new Set();
+let selectedProjectAgents = new Set();
+
+function renderNewProjectForm() {
+  const typesHost = $('#newProjectTypes');
+  if (typesHost && !typesHost.dataset.bound) {
+    typesHost.innerHTML = DEPLOY_TYPES.map(([id, label]) => `<div class="deploy-type-chip" data-type="${id}">${esc(label)}</div>`).join('');
+    typesHost.dataset.bound = '1';
+    $$('.deploy-type-chip').forEach((chip) => chip.onclick = () => {
+      chip.classList.toggle('selected');
+      if (chip.classList.contains('selected')) selectedDeployTypes.add(chip.dataset.type);
+      else selectedDeployTypes.delete(chip.dataset.type);
+      renderAgentPreview();
+    });
+  }
+  renderAgentPreview();
+}
+
+function renderAgentPreview() {
+  const host = $('#newProjectAgentPreview');
+  if (!host) return;
+  if (!D.agents.length) {
+    host.innerHTML = '<p class="muted" style="font-size:12px">Activate a roster from the Setup Wizard first.</p>';
+    return;
+  }
+  host.innerHTML = D.agents.map((a) => {
+    const suggested = selectedDeployTypes.size > 0 && (a.project_types || []).some((t) => selectedDeployTypes.has(t));
+    const isSelected = selectedProjectAgents.has(a.id);
+    return `<div class="agent-preview-chip ${isSelected ? 'selected' : ''} ${suggested ? 'suggested' : ''}" data-agent="${esc(a.id)}">${isSelected ? '<span class="tick">✓</span>' : ''}${esc(a.name)}</div>`;
+  }).join('');
+  $$('.agent-preview-chip').forEach((chip) => chip.onclick = () => {
+    const id = chip.dataset.agent;
+    if (selectedProjectAgents.has(id)) selectedProjectAgents.delete(id); else selectedProjectAgents.add(id);
+    renderAgentPreview();
+  });
+}
+
+async function submitNewProject(mode) {
   const name = $('#newProjectName').value.trim();
-  if (!name) return;
+  const hint = $('#newProjectHint');
+  if (!name) {
+    if (hint) { hint.textContent = 'Add a project name first.'; hint.style.color = 'var(--bad, #d33)'; }
+    $('#newProjectName').focus();
+    return;
+  }
+  if (hint) hint.style.color = '';
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'project';
   const description = $('#newProjectDesc').value.trim();
-  const agent_ids = Array.from($('#newProjectAgents').selectedOptions).map((o) => o.value);
-  const r = await api('/api/project', { method: 'POST', body: JSON.stringify({ name, slug, description, agent_ids }) });
+  const project_types = Array.from(selectedDeployTypes);
+  const agent_ids = Array.from(selectedProjectAgents);
+  const r = await api('/api/project', { method: 'POST', body: JSON.stringify({ name, slug, description, project_types, agent_ids, mode }) });
   $('#newProjectName').value = '';
   $('#newProjectDesc').value = '';
+  selectedDeployTypes = new Set();
+  selectedProjectAgents = new Set();
+  $$('.deploy-type-chip.selected').forEach((c) => c.classList.remove('selected'));
   await load();
-  const d = r.hermes_dispatch;
-  if (d && !d.ok) alert(`Project created, but Hermes dispatch failed: ${d.stderr || 'unknown error'}\n\nYou can retry from the project's detail view.`);
-};
+  if (r.queued) {
+    if (hint) { hint.style.color = ''; hint.textContent = `Queued — ticket ${r.ticket_key} is waiting on a go-ahead from the Chief of Staff before anything starts.`; }
+  } else {
+    const d = r.hermes_dispatch;
+    if (d && !d.ok) alert(`Project created, but Hermes dispatch failed: ${d.stderr || 'unknown error'}\n\nYou can retry from the project's detail view.`);
+  }
+}
+$('#startProjectBtn').onclick = () => submitNewProject('start');
+$('#queueProjectBtn').onclick = () => submitNewProject('queue');
 
 let openProjectId = null;
 function openProjectDialog(id) {

@@ -97,6 +97,30 @@ def configure_main_model(provider: str, model: str, api_key: str | None = None,
     return {"ok": ok, "provider": provider, "model": model, "profile": profile, "steps": steps}
 
 
+def verify_provider_key(provider: str, api_key: str, model: str) -> dict:
+    """A real connectivity test, not a format check: point a disposable Hermes
+    profile at this provider/key/model (scoped with `profile=`, never touching
+    the global config or any real agent's profile) and send it one throwaway
+    message. If the key or model is bad, Hermes's own `send` call fails and
+    that failure is what's reported back — this is the only verification
+    Hermes's documented CLI actually supports, there's no separate
+    "test credentials" endpoint to call instead."""
+    if not available():
+        return {"ok": False, "stderr": "hermes CLI not found on PATH — can't verify without it."}
+    if not api_key:
+        return {"ok": False, "stderr": "No API key provided."}
+    profile = "dispatch_verify"
+    if not profile_exists(profile):
+        created = _run(["profile", "create", profile])
+        if not created.get("ok"):
+            return {"ok": False, "stderr": f"Could not create a scratch profile to test with: {created.get('stderr')}"}
+    cfg = configure_main_model(provider, model or "default", api_key=api_key, profile=profile)
+    if not cfg.get("ok"):
+        return {"ok": False, "stderr": "Could not write test config", "steps": cfg.get("steps")}
+    result = send(profile, "Reply with the single word OK.", timeout=30)
+    return {"ok": result.get("ok", False), "stdout": result.get("stdout"), "stderr": result.get("stderr")}
+
+
 def serve_status(host="127.0.0.1", port=DEFAULT_PORT) -> dict:
     """Liveness check against the local `hermes serve` backend's /api/status."""
     try:
