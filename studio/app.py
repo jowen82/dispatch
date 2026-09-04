@@ -189,11 +189,42 @@ class App:
         slugs = {p['id']: p['slug'] for p in self.state.rows('SELECT id,slug FROM projects')}
         tasks = self.state.rows('SELECT * FROM tasks ORDER BY id DESC')
         tickets = self.state.rows('SELECT * FROM tickets ORDER BY id DESC')
-        approvals = self.state.rows('SELECT * FROM approvals ORDER BY id DESC')
-        files = self.state.rows('SELECT id,project_id,key,filename,content_type,size_bytes,note,agent,created_at FROM project_files ORDER BY id DESC')
-        for kind, rows in (('task', tasks), ('ticket', tickets), ('approval', approvals), ('file', files)):
+        files = self.state.rows('SELECT id,project_id,ticket_id,key,filename,content_type,size_bytes,note,agent,created_at FROM project_files ORDER BY id DESC')
+        for kind, rows in (('task', tasks), ('ticket', tickets), ('file', files)):
             for r in rows:
                 r['hermes_result'] = hermes_bridge.check_result(self.home, slugs.get(r.get('project_id')), kind, r['key'])
+        # Approvals are a ticket category now (category='approval'), not a separate
+        # table — 'notes' and 'attachments' are nested onto every ticket here so the
+        # detail panel can render a real activity thread instead of a single timeline
+        # line, and 'approvals' stays as a derived view for anything still expecting it.
+        notes_by_ticket, files_by_ticket = {}, {}
+        for n in self.state.rows('SELECT * FROM ticket_notes ORDER BY id'):
+            notes_by_ticket.setdefault(n['ticket_id'], []).append(n)
+        for f in files:
+            if f.get('ticket_id'):
+                files_by_ticket.setdefault(f['ticket_id'], []).append(f)
+        for t in tickets:
+            t['notes'] = notes_by_ticket.get(t['id'], [])
+            t['attachments'] = files_by_ticket.get(t['id'], [])
+        approvals = [t for t in tickets if t.get('category') == 'approval']
+        closed = [t for t in tickets if t.get('closed_at')]
+        mttr_hours = None
+        if closed:
+            durations = []
+            for t in closed:
+                d = self.state.rows(
+                    "SELECT (julianday(closed_at) - julianday(created_at)) * 24 AS hrs FROM tickets WHERE key=?",
+                    (t['key'],),
+                )
+                if d and d[0]['hrs'] is not None:
+                    durations.append(d[0]['hrs'])
+            if durations:
+                mttr_hours = round(sum(durations) / len(durations), 1)
+        ticket_kpis = {
+            'open': len([t for t in tickets if not t.get('closed_at')]),
+            'closed': len(closed),
+            'mttr_hours': mttr_hours,
+        }
         projects = self.state.rows('SELECT * FROM projects ORDER BY id DESC')
         for pr in projects:
             pr['hermes_result'] = hermes_bridge.check_result(self.home, pr['slug'], 'project', pr['slug'])
@@ -210,6 +241,7 @@ class App:
             'tasks': tasks,
             'tickets': tickets,
             'approvals': approvals,
+            'ticket_kpis': ticket_kpis,
             'files': files,
             'events': self.state.rows('SELECT * FROM events ORDER BY id DESC LIMIT 100'),
             'agents': agents,
@@ -324,6 +356,11 @@ class App:
         key = data.get('key')
         if not key:
             return {'ok': False, 'stderr': 'Missing ticket key'}
+        # 'decision' is the approval-category path (approve / reject / changes_requested);
+        # it's just a status write with its own vocabulary, folded in here so approvals
+        # and ordinary tickets share one update path end to end.
+        if data.get('decision') and 'status' not in data:
+            data = dict(data, status=data['decision'])
         fields, args = [], []
         for col in ('status', 'assigned_agent', 'priority', 'title', 'problem', 'root_cause', 'resolution', 'verification'):
             if col in data:
@@ -331,20 +368,45 @@ class App:
                 args.append(data[col])
         if not fields:
             return {'ok': False, 'stderr': 'Nothing to update'}
-        if data.get('status') in ('closed', 'resolved'):
+        if data.get('status') in ('closed', 'resolved', 'approved', 'rejected'):
             fields.append("closed_at=CURRENT_TIMESTAMP")
         args.append(key)
         self.state.exec(f"UPDATE tickets SET {','.join(fields)} WHERE key=?", tuple(args))
         row = self.state.rows('SELECT * FROM tickets WHERE key=?', (key,))
         if row:
             t = row[0]
+            comment = data.get('comment')
+            if comment:
+                self.add_ticket_note({'ticket_id': t['id'], 'author': 'Jeff', 'body': comment})
             self._dispatch_to_hermes(t['project_id'], 'ticket', key, {
                 'title': t['title'], 'status': t['status'], 'priority': t['priority'],
                 'agent': t['assigned_agent'],
                 'prompt': f"Ticket '{t['title']}' was updated: status is now {t['status']}"
-                          f"{', assigned to ' + t['assigned_agent'] if t['assigned_agent'] else ''}.",
+                          f"{', assigned to ' + t['assigned_agent'] if t['assigned_agent'] else ''}."
+                          f"{(' Comment: ' + comment) if comment else ''}",
             })
         return {'ok': True}
+
+    def add_ticket_note(self, data):
+        """A note/comment on a ticket's activity thread — from Jeff via the Command
+        Center, or from an agent posting its own status update back (the same
+        endpoint works for both; 'author' just says who)."""
+        ticket_id = data.get('ticket_id')
+        ticket_key = data.get('ticket_key') or data.get('key')
+        body = (data.get('body') or '').strip()
+        if not body:
+            return {'ok': False, 'stderr': 'Note body is empty'}
+        if not ticket_id and ticket_key:
+            row = self.state.rows('SELECT id FROM tickets WHERE key=?', (ticket_key,))
+            ticket_id = row[0]['id'] if row else None
+        if not ticket_id:
+            return {'ok': False, 'stderr': 'Unknown ticket'}
+        author = data.get('author') or 'Jeff'
+        i = self.state.exec(
+            "INSERT INTO ticket_notes(ticket_id,author,body) VALUES(?,?,?)",
+            (int(ticket_id), author, body),
+        )
+        return {'ok': True, 'id': i}
 
     def _dispatch_to_hermes(self, project_id, kind, key, payload):
         """Mirror a Command Center action to Hermes: a durable inbox file (audit trail,
@@ -495,14 +557,22 @@ class App:
 
     # --- project attachments --------------------------------------------------
     def add_project_file(self, data):
-        """Save an uploaded file (image, doc, whatever) against a project, then
-        hand it to the assigned/target Hermes agent the same way any other
-        Command Center action is dispatched."""
+        """Save an uploaded file (image, doc, whatever) against a project — or,
+        when 'ticket_id'/'ticket_key' is given, against a ticket instead (the
+        project is looked up from the ticket so it still shows on the project
+        too) — then hand it to the assigned/target Hermes agent the same way
+        any other Command Center action is dispatched."""
+        ticket_id, ticket_key = data.get('ticket_id'), data.get('ticket_key')
         pid = data.get('project_id')
+        if not pid and (ticket_id or ticket_key):
+            row = (self.state.rows('SELECT id,project_id FROM tickets WHERE id=?', (ticket_id,)) if ticket_id
+                   else self.state.rows('SELECT id,project_id FROM tickets WHERE key=?', (ticket_key,)))
+            if row:
+                ticket_id, pid = row[0]['id'], row[0]['project_id']
         filename = (data.get('filename') or 'upload.bin').strip() or 'upload.bin'
         b64 = data.get('data_base64')
         if not pid or not b64:
-            return {'ok': False, 'stderr': 'Missing project_id or file data'}
+            return {'ok': False, 'stderr': 'Missing project_id (or ticket) or file data'}
         pid = int(pid)
         try:
             raw = base64.b64decode(b64, validate=False)
@@ -523,14 +593,15 @@ class App:
         note = data.get('note', '')
         agent = data.get('agent')
         self.state.exec(
-            "INSERT INTO project_files(project_id,key,filename,content_type,size_bytes,note,agent,stored_path) VALUES(?,?,?,?,?,?,?,?)",
-            (pid, key, safe_name, content_type, len(raw), note, agent, str(stored_path)),
+            "INSERT INTO project_files(project_id,ticket_id,key,filename,content_type,size_bytes,note,agent,stored_path) VALUES(?,?,?,?,?,?,?,?,?)",
+            (pid, ticket_id, key, safe_name, content_type, len(raw), note, agent, str(stored_path)),
         )
+        where = f"ticket {ticket_key or ticket_id}" if ticket_id else "the project"
         prompt = (
-            f"New file uploaded to the project: '{safe_name}' ({content_type}, {len(raw)} bytes). "
+            f"New file uploaded to {where}: '{safe_name}' ({content_type}, {len(raw)} bytes). "
             f"{('Note: ' + note + '. ') if note else ''}"
             f"It's saved at projects/{slug}/attachments/{key}-{safe_name} (reachable through the filesystem MCP server). "
-            f"Review it and work with it as needed for this project."
+            f"Review it and work with it as needed."
         )
         self._dispatch_to_hermes(pid, 'file', key, {
             'filename': safe_name, 'content_type': content_type, 'size_bytes': len(raw),
@@ -735,18 +806,23 @@ class H(BaseHTTPRequestHandler):
             return self.sendj({'ok': True, 'id': i, 'key': key})
         if p == '/api/ticket-update':
             return self.sendj(APP.update_ticket(data))
+        if p == '/api/ticket-note':
+            return self.sendj(APP.add_ticket_note(data))
 
+        # Approvals are now just tickets with category='approval' (a 'decide' is a
+        # status write). These two routes are kept as aliases so nothing that still
+        # calls them breaks, but they write straight into the ticket table.
         if p == '/api/approval':
             project_id = int(data.get('project_id') or APP.state.ensure_default_project())
-            key = APP.state.next_key('approvals', 'CR')
+            key = APP.state.next_key('tickets', 'CR')
             title = data.get('title', 'Change Request')
             description = data.get('description', '')
             i = APP.state.exec(
-                "INSERT INTO approvals(project_id,key,type,title,description) VALUES(?,?,?,?,?)",
-                (project_id, key, data.get('type', 'change'), title, description),
+                "INSERT INTO tickets(project_id,key,source,category,priority,title,problem,status) VALUES(?,?,?,?,?,?,?,?)",
+                (project_id, key, 'internal', 'approval', data.get('priority', 'P3'), title, description, 'new'),
             )
-            APP._dispatch_to_hermes(project_id, 'approval', key, {
-                'title': title, 'description': description, 'status': 'pending',
+            APP._dispatch_to_hermes(project_id, 'ticket', key, {
+                'title': title, 'description': description, 'status': 'new',
                 'prompt': f"New approval requested: '{title}'. {description or ''} Awaiting a decision in the Command Center.",
             })
             return self.sendj({'ok': True, 'id': i, 'key': key})
@@ -755,17 +831,9 @@ class H(BaseHTTPRequestHandler):
             status = data.get('status')
             key = data.get('key')
             comment = data.get('comment', '')
-            if status not in ['approved', 'rejected', 'changes_requested']:
+            if status not in ('approved', 'rejected', 'changes_requested'):
                 return self.sendj({'ok': False}, 400)
-            APP.state.exec("UPDATE approvals SET status=?,comment=?,decided_at=CURRENT_TIMESTAMP WHERE key=?", (status, comment, key))
-            row = APP.state.rows('SELECT * FROM approvals WHERE key=?', (key,))
-            if row:
-                a = row[0]
-                APP._dispatch_to_hermes(a['project_id'], 'approval', key, {
-                    'title': a['title'], 'status': status, 'comment': comment,
-                    'prompt': f"Approval '{a['title']}' was {status}.{(' Comment: ' + comment) if comment else ''}",
-                })
-            return self.sendj({'ok': True})
+            return self.sendj(APP.update_ticket({'key': key, 'status': status, 'comment': comment}))
 
         self.send_error(404)
 

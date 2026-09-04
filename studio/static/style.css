@@ -221,6 +221,9 @@ body.command{margin:0}
 .cc-nav button.active{background:linear-gradient(90deg,rgba(110,168,255,.16),rgba(155,123,255,.08));color:#eaf1ff;box-shadow:inset 2px 0 0 var(--accent)}
 .cc-nav .icon{width:16px;text-align:center;opacity:.85}
 .cc-sidebar .spacer{flex:1}
+.cc-project-switcher{padding:10px 11px;border-radius:10px;background:#0e1420;border:1px solid var(--line);display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.cc-project-switcher label{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-2)}
+.cc-project-switcher select{all:unset;font-size:12.5px;color:var(--text);cursor:pointer;width:100%}
 .cc-status{padding:10px 11px;border-radius:10px;background:#0e1420;border:1px solid var(--line);font-size:11px;color:var(--muted)}
 .cc-status .dot{width:7px;height:7px;border-radius:50%;background:var(--good);display:inline-block;margin-right:6px;box-shadow:0 0 0 3px rgba(74,222,128,.18)}
 

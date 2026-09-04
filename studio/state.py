@@ -27,14 +27,38 @@ class State:
         CREATE TABLE IF NOT EXISTS agents(id TEXT PRIMARY KEY,name TEXT,department TEXT,level TEXT,model_capability TEXT,status TEXT DEFAULT 'idle',activity TEXT,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS project_agents(project_id INTEGER,agent_id TEXT,assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(project_id,agent_id));
         CREATE TABLE IF NOT EXISTS project_files(id INTEGER PRIMARY KEY,project_id INTEGER,key TEXT UNIQUE,filename TEXT,content_type TEXT,size_bytes INTEGER,note TEXT,agent TEXT,stored_path TEXT,hermes_status TEXT DEFAULT 'queued',created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS agent_delegations(id INTEGER PRIMARY KEY,project_id INTEGER,from_agent TEXT,to_agent TEXT,note TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
         ''')
         c.commit()
-        # Lightweight migration for databases created before description/archived_at existed.
+        # Lightweight migrations for databases created before newer columns/tables existed.
         existing_cols={row[1] for row in c.execute("PRAGMA table_info(projects)").fetchall()}
         for col,ddl in (("description","ALTER TABLE projects ADD COLUMN description TEXT DEFAULT ''"),("archived_at","ALTER TABLE projects ADD COLUMN archived_at TEXT")):
             if col not in existing_cols:
                 try:c.execute(ddl);c.commit()
                 except sqlite3.OperationalError:pass
+        pf_cols={row[1] for row in c.execute("PRAGMA table_info(project_files)").fetchall()}
+        if "ticket_id" not in pf_cols:
+            try:c.execute("ALTER TABLE project_files ADD COLUMN ticket_id INTEGER");c.commit()
+            except sqlite3.OperationalError:pass
+        # One-time, additive migration: approvals are now a ticket category (category='approval'),
+        # not a separate table. Copy anything not already migrated, never delete the old table —
+        # this is a read history, not something to risk losing.
+        try:
+            existing_approval_keys={row['key'] for row in c.execute("SELECT key FROM tickets WHERE category='approval'").fetchall()}
+            for a in c.execute("SELECT * FROM approvals").fetchall():
+                cols=[d[0] for d in c.execute("SELECT * FROM approvals LIMIT 0").description]
+                row=dict(zip(cols,a))
+                if row['key'] in existing_approval_keys:
+                    continue
+                c.execute(
+                    "INSERT INTO tickets(project_id,key,source,category,priority,title,problem,status,created_at,closed_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (row['project_id'],row['key'],'internal','approval','P3',row['title'],row.get('description') or '',
+                     row['status'] if row['status']!='pending' else 'new',row['created_at'],row.get('decided_at')),
+                )
+            c.commit()
+        except sqlite3.OperationalError:
+            pass
         c.close()
     def rows(self,sql,args=()):
         c=sqlite3.connect(self.db);c.row_factory=sqlite3.Row;r=[dict(x) for x in c.execute(sql,args).fetchall()];c.close();return r

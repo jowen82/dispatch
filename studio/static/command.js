@@ -98,7 +98,6 @@ function render() {
   renderKanban();
   renderAgents();
   renderTickets();
-  renderApprovals();
   renderProjects();
   renderModels();
   renderTools();
@@ -106,8 +105,8 @@ function render() {
 }
 
 function renderOverview() {
-  const openTickets = D.tickets.filter((x) => !['closed', 'resolved'].includes(x.status)).length;
-  const pendingApprovals = D.approvals.filter((x) => x.status === 'pending').length;
+  const openTickets = D.tickets.filter((x) => !['closed', 'resolved', 'approved', 'rejected'].includes(x.status)).length;
+  const pendingApprovals = (D.approvals || []).filter((x) => !['closed', 'resolved', 'approved', 'rejected'].includes(x.status)).length;
   const metrics = [
     ['◉', 'Projects', D.projects.length],
     ['◈', 'Agents active', D.agents.length],
@@ -131,6 +130,21 @@ function renderOverview() {
 
   const o = D.organization || {};
   $('#ccOrgSnapshot').innerHTML = `<div class="pill accent">${(o.project_types || []).join(' + ') || '—'}</div><div class="pill">${esc(o.complexity || '—')}</div><div class="pill">${o.agent_count || 0} roles</div><p class="muted" style="margin-top:10px;font-size:12.5px">Adjust deployment targets from the Setup Wizard; this view always reflects the last activated roster.</p>`;
+
+  // Always every project, regardless of the sidebar project switcher — Overview
+  // is the one place meant to answer "how's everything doing" at a glance.
+  $('#ccProjectStatusList').innerHTML = D.projects.map((p) => {
+    const pct = projectPct(p);
+    return `<div class="agent-row" style="grid-template-columns:1.4fr auto auto auto;align-items:center;gap:10px">
+      <b style="font-size:12.5px">${esc(p.name)}</b>
+      <span class="pill ${PROJECT_STATUS_PILL[p.status] || 'accent'}">${esc(p.status)}</span>
+      <span class="muted" style="font-size:11px;min-width:120px">${agentCountForProject(p.id)} agent(s)</span>
+      <div style="display:flex;align-items:center;gap:8px;min-width:120px">
+        <div class="project-progress-track" style="flex:1"><div class="project-progress-fill" style="width:${pct}%"></div></div>
+        <span class="muted" style="font-size:11px">${pct}%</span>
+      </div>
+    </div>`;
+  }).join('') || '<p class="muted" style="font-size:12.5px">No projects yet — create one from the Projects view.</p>';
 }
 
 const KANBAN_COLS = [
@@ -140,10 +154,14 @@ const KANBAN_COLS = [
   { id: 'done', label: 'Done' },
 ];
 
+// The project context lives in one place — a single sidebar dropdown that's
+// visible no matter which view you're on — rather than a filter buried inside
+// the Kanban view alone. Kanban reads it to scope its board; Overview
+// deliberately ignores it and always shows every project.
 let kanbanProjectId = 'all';
 
-function renderKanbanProjectFilter() {
-  const sel = $('#kanbanProjectFilter');
+function renderProjectSwitcher() {
+  const sel = $('#ccProjectSwitcher');
   const prev = sel.value || kanbanProjectId;
   sel.innerHTML = ['<option value="all">All projects</option>']
     .concat(D.projects.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`)).join('');
@@ -153,7 +171,9 @@ function renderKanbanProjectFilter() {
 }
 
 function renderKanban() {
-  renderKanbanProjectFilter();
+  renderProjectSwitcher();
+  const proj = kanbanProjectId === 'all' ? null : D.projects.find((p) => String(p.id) === String(kanbanProjectId));
+  $('#kanbanProjectLabel').textContent = proj ? `Showing: ${proj.name}` : 'Showing: all projects — pick one from the sidebar to scope this board.';
   const tasks = kanbanProjectId === 'all' ? D.tasks : D.tasks.filter((t) => String(t.project_id) === String(kanbanProjectId));
   $('#kanban').innerHTML = KANBAN_COLS.map((col) => {
     const items = tasks.filter((t) => (t.status || 'backlog') === col.id);
@@ -223,7 +243,7 @@ function bindKanbanDnD() {
   });
 }
 
-$('#kanbanProjectFilter').onchange = () => { kanbanProjectId = $('#kanbanProjectFilter').value; renderKanban(); };
+$('#ccProjectSwitcher').onchange = () => { kanbanProjectId = $('#ccProjectSwitcher').value; renderKanban(); renderOverview(); };
 $('#addTaskBtn').onclick = async () => {
   const title = $('#newTaskTitle').value.trim();
   if (!title) return;
@@ -265,14 +285,31 @@ function renderAgents() {
 }
 
 let openTicketKey = null;
+
+function renderTicketKpis() {
+  const k = D.ticket_kpis || { open: 0, closed: 0, mttr_hours: null };
+  const host = $('#ticketKpis');
+  if (!host) return;
+  const mttr = k.mttr_hours == null ? '—' : (k.mttr_hours < 1 ? `${Math.round(k.mttr_hours * 60)}m` : `${k.mttr_hours}h`);
+  host.innerHTML = [
+    ['☍', 'Open', k.open],
+    ['✓', 'Closed', k.closed],
+    ['⏱', 'MTTR', mttr],
+  ].map(([icon, label, val]) => `<div class="metric-card"><span class="metric-icon">${icon}</span><div class="metric-value">${val}</div><div class="metric-label">${label}</div></div>`).join('');
+}
+
 function renderTickets() {
+  renderTicketKpis();
   $('#ccTickets').innerHTML = D.tickets.map((t) => `<button type="button" class="desk-row ${t.key === openTicketKey ? 'active' : ''}" data-ticket="${esc(t.key)}">
       <b>${esc(t.key)} · ${esc(t.title)}</b>
-      <span class="pill ${t.status === 'closed' || t.status === 'resolved' ? 'good' : 'warn'}">${esc(t.status)}</span>
-      <span class="pill">${esc(t.priority || 'P3')}</span>
+      <span class="pill ${['closed', 'resolved', 'approved'].includes(t.status) ? 'good' : t.status === 'rejected' ? 'bad' : 'warn'}">${esc(t.status)}</span>
+      <span class="pill">${t.category === 'approval' ? '✓ Approval' : esc(t.priority || 'P3')}</span>
     </button>`).join('') || '<div class="empty-state">No tickets yet.</div>';
-  $$('[data-ticket]').forEach((b) => b.onclick = () => { openTicketKey = b.dataset.ticket; renderTickets(); renderTicketDetail(); });
   if (openTicketKey && !D.tickets.some((t) => t.key === openTicketKey)) openTicketKey = null;
+  $$('[data-ticket]').forEach((b) => b.onclick = () => {
+    openTicketKey = b.dataset.ticket === openTicketKey ? openTicketKey : b.dataset.ticket;
+    renderTickets();
+  });
   renderTicketDetail();
 }
 
@@ -281,61 +318,107 @@ function renderTicketDetail() {
   const t = D.tickets.find((x) => x.key === openTicketKey);
   if (!t) {
     host.classList.add('empty');
-    host.innerHTML = '<span class="muted">Select a ticket to see its details and agent activity.</span>';
+    host.innerHTML = '<span class="muted">Select a ticket to see its details, notes, and agent activity.</span>';
     return;
   }
   host.classList.remove('empty');
+  const isApproval = t.category === 'approval';
+  const isOpen = !['closed', 'resolved', 'approved', 'rejected'].includes(t.status);
   const timeline = [
     ['Opened', t.created_at],
     t.assigned_agent ? ['Assigned', `to ${t.assigned_agent}`] : null,
     t.hermes_result ? ['Sent to Hermes', t.hermes_result.ok ? `accepted by ${t.hermes_result.target || 'chief_of_staff'}` : (t.hermes_result.stderr || 'failed')] : null,
     t.resolution ? ['Resolution', t.resolution] : null,
-    t.closed_at ? ['Closed', t.closed_at] : null,
+    t.closed_at ? [isApproval ? 'Decided' : 'Closed', t.closed_at] : null,
   ].filter(Boolean);
+  const notes = (t.notes || []);
+  const attachments = (t.attachments || []);
   host.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-      <div><h2 style="margin-bottom:4px">${esc(t.title)}</h2><span class="muted" style="font-size:12px">${esc(t.key)}</span></div>
-      <span class="pill ${t.status === 'closed' || t.status === 'resolved' ? 'good' : 'warn'}">${esc(t.status)}</span>
+      <div><h2 style="margin-bottom:4px">${esc(t.title)}</h2><span class="muted" style="font-size:12px">${esc(t.key)}${isApproval ? ' · Approval' : ''}</span></div>
+      <span class="pill ${['closed', 'resolved', 'approved'].includes(t.status) ? 'good' : t.status === 'rejected' ? 'bad' : 'warn'}">${esc(t.status)}</span>
     </div>
     <p class="muted" style="margin-top:14px">${esc(t.problem || 'No details provided.')}</p>
-    <div class="formrow" style="margin-top:10px">
-      <label>Status
-        <select id="tdStatus">${['new', 'in_progress', 'resolved', 'closed'].map((s) => `<option value="${s}" ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
-      </label>
-      <button class="secondary" id="tdSave">Save</button>
+    ${isApproval && isOpen ? `
+      <div class="formrow" style="margin-top:10px">
+        <button id="tdApprove">Approve</button>
+        <button class="secondary" id="tdReject">Reject</button>
+        <button class="ghost" id="tdChanges">Request Changes</button>
+      </div>
+    ` : `
+      <div class="formrow" style="margin-top:10px">
+        <label>Status
+          <select id="tdStatus">${['new', 'in_progress', 'resolved', 'closed'].map((s) => `<option value="${s}" ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+        </label>
+        <button class="secondary" id="tdSave">Save</button>
+      </div>
+    `}
+    <h3 style="margin-top:18px">Attachments</h3>
+    <div class="formrow">
+      <input type="file" id="tdFile">
+    </div>
+    ${attachments.length ? `<div class="formrow" style="flex-wrap:wrap">${attachments.map((f) => `<a href="/api/project-file/download?key=${encodeURIComponent(f.key)}" target="_blank" class="pill">📎 ${esc(f.filename)}</a>`).join('')}</div>` : '<p class="muted" style="font-size:12.5px">No files attached.</p>'}
+    <h3 style="margin-top:18px">Notes</h3>
+    <div class="desk-timeline">
+      ${notes.map((n) => `<div class="desk-timeline-item"><b>${esc(n.author)}</b> — ${esc(n.body)} <span class="muted" style="font-size:11px">${esc(n.created_at || '')}</span></div>`).join('') || '<div class="desk-timeline-item muted">No notes yet — agents can post status updates here too.</div>'}
+    </div>
+    <div class="formrow" style="margin-top:8px">
+      <input id="tdNoteBody" placeholder="Add a note…" style="min-width:260px">
+      <button class="secondary" id="tdNoteSave">Add Note</button>
     </div>
     <h3 style="margin-top:18px">Activity</h3>
     <div class="desk-timeline">
       ${timeline.map(([label, val]) => `<div class="desk-timeline-item"><b>${esc(label)}</b> — ${esc(val || '')}</div>`).join('') || '<div class="desk-timeline-item muted">No activity recorded yet.</div>'}
     </div>
   `;
-  $('#tdSave').onclick = async () => {
+  const saveBtn = $('#tdSave');
+  if (saveBtn) saveBtn.onclick = async () => {
     await api('/api/ticket-update', { method: 'POST', body: JSON.stringify({ key: t.key, status: $('#tdStatus').value }) });
     await load();
   };
+  ['tdApprove', 'tdReject', 'tdChanges'].forEach((id, i) => {
+    const btn = $('#' + id);
+    if (!btn) return;
+    const decision = ['approved', 'rejected', 'changes_requested'][i];
+    btn.onclick = async () => {
+      await api('/api/ticket-update', { method: 'POST', body: JSON.stringify({ key: t.key, decision }) });
+      await load();
+    };
+  });
+  $('#tdNoteSave').onclick = async () => {
+    const body = $('#tdNoteBody').value.trim();
+    if (!body) return;
+    await api('/api/ticket-note', { method: 'POST', body: JSON.stringify({ ticket_key: t.key, body }) });
+    await load();
+  };
+  $('#tdFile').onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const data_base64 = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result.split(',')[1]);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+    await api('/api/project-file', { method: 'POST', body: JSON.stringify({ ticket_key: t.key, filename: file.name, content_type: file.type, data_base64 }) });
+    await load();
+  };
 }
+
 $('#addTicketBtn').onclick = async () => {
   const title = $('#newTicketTitle').value.trim();
-  if (!title) return;
-  await api('/api/ticket', { method: 'POST', body: JSON.stringify({ title, priority: $('#newTicketPriority').value, category: 'incident' }) });
+  const hint = $('#addTicketHint');
+  if (!title) {
+    if (hint) { hint.textContent = 'Add a title first.'; hint.style.color = 'var(--bad, #d33)'; }
+    $('#newTicketTitle').focus();
+    return;
+  }
+  if (hint) hint.textContent = '';
+  await api('/api/ticket', {
+    method: 'POST',
+    body: JSON.stringify({ title, priority: $('#newTicketPriority').value, category: $('#newTicketCategory').value }),
+  });
   $('#newTicketTitle').value = '';
-  await load();
-};
-
-function renderApprovals() {
-  $('#ccApprovals').innerHTML = D.approvals.map((a) => `<div class="card"><b>${esc(a.key)} · ${esc(a.title)}</b><span class="pill ${a.status === 'approved' ? 'good' : a.status === 'rejected' ? 'bad' : 'warn'}">${esc(a.status)}</span>${hermesPill(a.hermes_result)}<p class="muted" style="font-size:12.5px">${esc(a.description || '')}</p>${a.status === 'pending' ? `<div class="formrow"><button data-approve="${esc(a.key)}">Approve</button><button class="secondary" data-reject="${esc(a.key)}">Reject</button></div>` : ''}</div>`).join('') || '<div class="empty-state">No approvals yet.</div>';
-  $$('[data-approve]').forEach((b) => b.onclick = () => decide(b.dataset.approve, 'approved'));
-  $$('[data-reject]').forEach((b) => b.onclick = () => decide(b.dataset.reject, 'rejected'));
-}
-async function decide(key, status) {
-  await api('/api/approval-decision', { method: 'POST', body: JSON.stringify({ key, status }) });
-  await load();
-}
-$('#addApprovalBtn').onclick = async () => {
-  const title = $('#newApprovalTitle').value.trim();
-  if (!title) return;
-  await api('/api/approval', { method: 'POST', body: JSON.stringify({ title, type: 'change' }) });
-  $('#newApprovalTitle').value = '';
   await load();
 };
 
