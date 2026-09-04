@@ -25,12 +25,11 @@
       <button data-view="approvals"><span class="icon">✓</span>Approvals</button>
       <button data-view="projects"><span class="icon">▤</span>Projects</button>
       <button data-view="models"><span class="icon">◔</span>Models</button>
-      <button data-view="tools"><span class="icon">⚙</span>Tools &amp; Integration</button>
-      <button data-view="diagnostics"><span class="icon">⌁</span>Diagnostics</button>
     </nav>
 
     <div class="spacer"></div>
-    <div class="cc-status"><span class="dot"></span>Live · local only<br><a href="/" style="color:var(--muted)">← Back to Setup Wizard</a></div>
+    <button data-view="settings" class="cc-settings-link" style="all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:9px;color:var(--muted-2);font-size:12px"><span class="icon">⚙</span>Settings</button>
+    <div class="cc-status"><span class="dot"></span>Live · local only</div>
   </aside>
 
   <main class="cc-main">
@@ -43,14 +42,20 @@
     </div>
 
     <section class="cc-view active" data-view="overview">
+      <div class="notice" id="setupSummaryNotice" style="display:none">
+        <span>✅</span>
+        <div><b>Setup finished — Hermes is configuring in the background.</b>
+          <div class="muted" style="font-size:12.5px;margin-top:4px" id="setupSummaryText"></div>
+        </div>
+      </div>
       <div class="notice info" id="hermesBridgeNotice">
         <span>🔗</span>
         <div>
           <b>Hermes bridge — best-effort, unverified.</b>
-          <div class="muted" style="font-size:12.5px;margin-top:4px" id="hermesBridgeText">Every action here is mirrored as a job file into your shared <code>projects/&lt;slug&gt;/hermes-inbox/</code> folder (the same one wired into Hermes via the generated filesystem MCP server). This studio has no confirmed way to verify a running Hermes agent actually reads it — check <a href="#" data-nav="tools">Tools &amp; Integration</a> for setup notes.</div>
+          <div class="muted" style="font-size:12.5px;margin-top:4px" id="hermesBridgeText">Every action here is mirrored as a job file into your shared <code>projects/&lt;slug&gt;/hermes-inbox/</code> folder (the same one wired into Hermes via the generated filesystem MCP server). This studio has no confirmed way to verify a running Hermes agent actually reads it — check <a href="#" data-nav="settings">Settings</a> for setup notes.</div>
         </div>
       </div>
-      <div class="cards" id="ccMetrics"></div>
+      <div class="stat-row" id="ccMetrics"></div>
       <div class="twocol" style="margin-top:6px">
         <div class="panel" style="padding:18px">
           <h2>Recent activity</h2>
@@ -65,16 +70,21 @@
 
     <section class="cc-view" data-view="kanban">
       <div class="formrow">
+        <select id="kanbanProjectFilter" style="min-width:190px"></select>
         <input id="newTaskTitle" placeholder="New task title…" style="min-width:260px">
         <select id="newTaskPriority"><option>P1</option><option>P2</option><option selected>P3</option><option>P4</option></select>
         <select id="newTaskAgent"></select>
         <button id="addTaskBtn">Add Task</button>
       </div>
-      <div class="kanban" id="kanban"></div>
+      <div class="kanban-layout">
+        <div class="kanban" id="kanban"></div>
+        <div class="kanban-side" id="kanbanSide"></div>
+      </div>
     </section>
 
     <section class="cc-view" data-view="agents">
-      <div class="cards" id="ccAgents"></div>
+      <p class="lead" style="font-size:13px">A node lights up when Dispatch actually hands that agent something to do — this reflects real dispatch events, not a simulation.</p>
+      <div class="orgchart" id="ccAgents"></div>
     </section>
 
     <section class="cc-view" data-view="tickets">
@@ -83,7 +93,10 @@
         <select id="newTicketPriority"><option>P1</option><option>P2</option><option selected>P3</option><option>P4</option></select>
         <button id="addTicketBtn">Open Ticket</button>
       </div>
-      <div class="cards" id="ccTickets"></div>
+      <div class="desk-layout">
+        <div class="desk-list" id="ccTickets"></div>
+        <div class="desk-detail empty" id="ccTicketDetail"><span class="muted">Select a ticket to see its details and agent activity.</span></div>
+      </div>
     </section>
 
     <section class="cc-view" data-view="approvals">
@@ -105,7 +118,10 @@
         <button id="addProjectBtn">New Project — Send to Hermes</button>
       </div>
       <p class="muted" style="font-size:12px">Creating a project immediately sends this description to Hermes as a kickoff prompt and asks it to start working and post its own tasks to the Kanban board. Click a project card to see its details, edit its description, manage assigned agents, resend to Hermes, or archive/delete it.</p>
-      <div class="cards" id="ccProjects"></div>
+      <div class="projects-layout">
+        <div class="projects-cols" id="ccProjects"></div>
+        <div class="projects-side" id="ccProjectsSide"></div>
+      </div>
     </section>
 
     <section class="cc-view" data-view="models">
@@ -114,15 +130,17 @@
       <div class="cards" id="ccExistingModels"></div>
     </section>
 
-    <section class="cc-view" data-view="tools">
-      <h2>Developer tools</h2>
+    <section class="cc-view" data-view="settings">
+      <p class="lead">Quick fixes and diagnostics live here. For a full reconfiguration — deployment targets, tools, models, organization — open the Setup Wizard.</p>
+      <div class="formrow"><a href="/"><button class="secondary">Open full Setup Wizard →</button></a></div>
+
+      <h2 style="margin-top:22px">Developer tools</h2>
       <div class="cards" id="ccTools"></div>
       <h2 style="margin-top:20px">Hermes integration</h2>
       <div id="ccHermes"></div>
-    </section>
 
-    <section class="cc-view" data-view="diagnostics">
-      <p class="lead">Create a redacted JSON support report you can share for troubleshooting.</p>
+      <h2 style="margin-top:22px">Support report</h2>
+      <p class="lead" style="font-size:13px">Create a redacted JSON support report you can share for troubleshooting.</p>
       <button id="reportBtn">Create Support Report</button>
       <pre id="diag"></pre>
       <h2 style="margin-top:20px">Recent installer actions</h2>
@@ -131,6 +149,11 @@
 
   </main>
 </div>
+
+<a class="gh-link" href="https://github.com/jowen82/dispatch" target="_blank" rel="noopener">
+  <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38l-.01-1.49c-2.01.37-2.66-.83-2.66-1.5 0-.28.14-.47.35-.62.05-.03.02-.06-.03-.06-.6.05-1.31.28-1.48-.7-.13-.75-.44-.87-.6-.94-.13-.05-.28-.15-.28-.15.28-.03.44.29.44.29.26.44.68.31.85.24.03-.19.1-.31.18-.39-1.6-.18-3.29-.8-3.29-3.56 0-.79.28-1.44.75-1.95-.08-.18-.33-.92.07-1.9 0 0 .61-.2 2 .74a6.9 6.9 0 0 1 3.64 0c1.39-.94 2-.74 2-.74.4.98.15 1.72.07 1.9.47.51.75 1.16.75 1.95 0 2.77-1.69 3.38-3.3 3.56.11.09.2.28.2.56l-.01 1.86c0 .21.15.45.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+  <span>jowen82/dispatch — ★ Star on GitHub</span>
+</a>
 
 <dialog id="projectDialog">
   <div class="dialog-inner" style="min-width:420px;max-width:520px">

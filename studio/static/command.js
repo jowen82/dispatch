@@ -59,14 +59,14 @@ async function trackJob(host, jobId, label, onDone) {
 
 /* ---------------- nav ---------------- */
 function goToView(view) {
-  const btn = $$('#ccNav button').find((x) => x.dataset.view === view);
+  const btn = $$('.cc-sidebar [data-view]').find((x) => x.dataset.view === view);
   if (!btn) return;
-  $$('#ccNav button').forEach((x) => x.classList.remove('active'));
+  $$('.cc-sidebar [data-view]').forEach((x) => x.classList.remove('active'));
   btn.classList.add('active');
   $$('.cc-view').forEach((v) => v.classList.toggle('active', v.dataset.view === view));
   $('#viewTitle').textContent = btn.textContent.trim();
 }
-$$('#ccNav button').forEach((b) => b.onclick = () => goToView(b.dataset.view));
+$$('.cc-sidebar [data-view]').forEach((b) => b.onclick = () => goToView(b.dataset.view));
 document.addEventListener('click', (e) => {
   const nav = e.target.closest('[data-nav]');
   if (nav) { e.preventDefault(); goToView(nav.dataset.nav); }
@@ -78,6 +78,20 @@ async function load() {
   D = await api('/api/command-center');
   render();
 }
+
+// One-time banner when arriving straight from a finished wizard run — the
+// wizard hands this off via sessionStorage since it now navigates in-place
+// (same tab) instead of opening a new one.
+(function showSetupSummaryIfPresent() {
+  let summary;
+  try { summary = sessionStorage.getItem('dispatch_setup_summary'); } catch (e) { return; }
+  if (!summary) return;
+  try { sessionStorage.removeItem('dispatch_setup_summary'); } catch (e) {}
+  const notice = $('#setupSummaryNotice');
+  if (!notice) return;
+  $('#setupSummaryText').textContent = summary;
+  notice.style.display = 'flex';
+})();
 
 function render() {
   renderOverview();
@@ -110,7 +124,7 @@ function renderOverview() {
     $('#hermesBridgeNotice').classList.toggle('info', true);
     $('#hermesBridgeText').innerHTML = `<code>hermes</code> CLI detected — actions are sent live via <code>hermes send --to &lt;agent&gt;</code>${serveUp ? ' and the local Hermes backend is reachable' : ' (the local Hermes backend at 127.0.0.1:9119 did not respond — Hermes may not be running)'}. A durable copy of every job also lands in <code>projects/&lt;slug&gt;/hermes-inbox/</code>. ${hb.acknowledged || 0} of ${hb.queued || 0} queued job(s) have a recorded result — open a card to see whether Hermes accepted it.`;
   } else {
-    $('#hermesBridgeText').innerHTML = `The <code>hermes</code> CLI isn't on this Mac's PATH, so actions can only queue as job files in <code>projects/&lt;slug&gt;/hermes-inbox/</code> — nothing is sent live yet. Install Hermes and the <code>hermes</code> CLI, then actions here will start dispatching automatically. See <a href="#" data-nav="tools">Tools &amp; Integration</a>.`;
+    $('#hermesBridgeText').innerHTML = `The <code>hermes</code> CLI isn't on this Mac's PATH, so actions can only queue as job files in <code>projects/&lt;slug&gt;/hermes-inbox/</code> — nothing is sent live yet. Install Hermes and the <code>hermes</code> CLI, then actions here will start dispatching automatically. See <a href="#" data-nav="settings">Settings</a>.`;
   }
 
   $('#ccEvents').innerHTML = (D.events || []).slice(0, 8).map((e) => `<div class="agent-row" style="grid-template-columns:1fr"><b style="font-size:12.5px">${esc(e.summary || e.type)}</b><span class="muted" style="font-size:11px">${esc(e.created_at || '')}</span></div>`).join('') || '<p class="muted">No events recorded yet.</p>';
@@ -126,9 +140,23 @@ const KANBAN_COLS = [
   { id: 'done', label: 'Done' },
 ];
 
+let kanbanProjectId = 'all';
+
+function renderKanbanProjectFilter() {
+  const sel = $('#kanbanProjectFilter');
+  const prev = sel.value || kanbanProjectId;
+  sel.innerHTML = ['<option value="all">All projects</option>']
+    .concat(D.projects.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`)).join('');
+  // Keep the previous selection if it still exists (e.g. after a reload), default to "all" otherwise.
+  sel.value = Array.from(sel.options).some((o) => o.value === prev) ? prev : 'all';
+  kanbanProjectId = sel.value;
+}
+
 function renderKanban() {
+  renderKanbanProjectFilter();
+  const tasks = kanbanProjectId === 'all' ? D.tasks : D.tasks.filter((t) => String(t.project_id) === String(kanbanProjectId));
   $('#kanban').innerHTML = KANBAN_COLS.map((col) => {
-    const items = D.tasks.filter((t) => (t.status || 'backlog') === col.id);
+    const items = tasks.filter((t) => (t.status || 'backlog') === col.id);
     return `<div class="kanban-col" data-status="${col.id}">
       <div class="kanban-col-head"><b>${col.label}</b><span class="kanban-count">${items.length}</span></div>
       <div class="kanban-drop" data-status="${col.id}">
@@ -137,9 +165,34 @@ function renderKanban() {
     </div>`;
   }).join('');
   bindKanbanDnD();
+  renderKanbanSide(tasks);
 
   const agentOpts = ['<option value="">Unassigned</option>'].concat(D.agents.map((a) => `<option value="${esc(a.id)}">${esc(a.name)}</option>`));
   $('#newTaskAgent').innerHTML = agentOpts.join('');
+}
+
+function renderKanbanSide(tasks) {
+  const total = tasks.length;
+  const done = tasks.filter((t) => t.status === 'done').length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const R = 44, C = 2 * Math.PI * R;
+  const proj = kanbanProjectId === 'all' ? null : D.projects.find((p) => String(p.id) === String(kanbanProjectId));
+  const counts = KANBAN_COLS.map((col) => [col.label, tasks.filter((t) => (t.status || 'backlog') === col.id).length]);
+  const agentsOnProject = proj ? (D.project_agents || []).filter((pa) => pa.project_id === proj.id).length : null;
+  $('#kanbanSide').innerHTML = `
+    <h3 style="margin-bottom:2px">${proj ? esc(proj.name) : 'All projects'}</h3>
+    <p class="muted" style="font-size:11.5px;margin-bottom:14px">${proj ? esc(proj.status) : `${D.projects.length} project(s)`}</p>
+    <div class="progress-ring">
+      <svg viewBox="0 0 104 104">
+        <circle class="ring-track" cx="52" cy="52" r="${R}"></circle>
+        <circle class="ring-fill" cx="52" cy="52" r="${R}" stroke-dasharray="${C}" stroke-dashoffset="${C - (C * pct) / 100}"></circle>
+      </svg>
+      <div class="ring-pct">${pct}%</div>
+    </div>
+    ${counts.map(([label, n]) => `<div class="stat-line"><span class="muted">${esc(label)}</span><b>${n}</b></div>`).join('')}
+    ${proj ? `<div class="stat-line"><span class="muted">Agents assigned</span><b>${agentsOnProject}</b></div>
+      <div class="stat-line"><span class="muted">Hermes</span><b>${proj.hermes_result ? (proj.hermes_result.ok ? 'Working' : 'Failed') : 'Not sent'}</b></div>` : ''}
+  `;
 }
 
 function taskCardHTML(t) {
@@ -170,25 +223,96 @@ function bindKanbanDnD() {
   });
 }
 
+$('#kanbanProjectFilter').onchange = () => { kanbanProjectId = $('#kanbanProjectFilter').value; renderKanban(); };
 $('#addTaskBtn').onclick = async () => {
   const title = $('#newTaskTitle').value.trim();
   if (!title) return;
-  await api('/api/task', { method: 'POST', body: JSON.stringify({ title, priority: $('#newTaskPriority').value, agent: $('#newTaskAgent').value || null }) });
+  const body = { title, priority: $('#newTaskPriority').value, agent: $('#newTaskAgent').value || null };
+  if (kanbanProjectId !== 'all') body.project_id = kanbanProjectId;
+  await api('/api/task', { method: 'POST', body: JSON.stringify(body) });
   $('#newTaskTitle').value = '';
   await load();
 };
 
+const _agentLastSeenUpdate = {}; // agent id -> updated_at we last rendered, to flash only on a genuinely NEW dispatch
 function renderAgents() {
-  const byAgent = {};
-  (D.project_agents || []).forEach((pa) => (byAgent[pa.agent_id] ??= []).push(pa.project_id));
-  $('#ccAgents').innerHTML = D.agents.map((a) => {
-    const projectNames = (byAgent[a.id] || []).map((pid) => D.projects.find((p) => p.id === pid)?.name).filter(Boolean);
-    return `<div class="card"><b>${esc(a.name)}</b><span class="pill accent">${esc(a.department)}</span><span class="pill">${esc(a.status)}</span><div class="muted" style="margin-top:6px">${esc(a.activity || '')}</div>${projectNames.length ? `<div style="margin-top:8px">${projectNames.map((n) => `<span class="pill">${esc(n)}</span>`).join('')}</div>` : ''}</div>`;
-  }).join('') || '<div class="empty-state">Activate a generated roster from the Setup Wizard first.</div>';
+  if (!D.agents.length) {
+    $('#ccAgents').innerHTML = '<div class="empty-state">Activate a generated roster from the Setup Wizard first.</div>';
+    return;
+  }
+  const byAgentProjects = {};
+  (D.project_agents || []).forEach((pa) => (byAgentProjects[pa.agent_id] ??= []).push(pa.project_id));
+  const projectNamesFor = (agentId) => (byAgentProjects[agentId] || []).map((pid) => D.projects.find((p) => p.id === pid)?.name).filter(Boolean);
+  const byDept = {};
+  D.agents.forEach((a) => (byDept[a.department || 'General'] ??= []).push(a));
+  $('#ccAgents').innerHTML = `<div class="orgchart-root">Command Center</div>` + Object.entries(byDept).map(([dept, agents]) => `
+    <div class="orgchart-dept">
+      <div class="orgchart-dept-label">${esc(dept)}</div>
+      <div class="orgchart-row">
+        ${agents.map((a) => {
+          const isNew = a.updated_at && _agentLastSeenUpdate[a.id] && _agentLastSeenUpdate[a.id] !== a.updated_at;
+          _agentLastSeenUpdate[a.id] = a.updated_at;
+          const projectNames = projectNamesFor(a.id);
+          return `<div class="orgchart-node ${a.recently_active ? 'working' : ''} ${isNew ? 'just-dispatched' : ''}">
+            <b>${esc(a.name)}</b>
+            <div class="role">${esc(a.level || '')}</div>
+            <div class="activity">${a.recently_active ? esc(a.activity || 'Working…') : (projectNames[0] ? esc(projectNames[0]) : '')}</div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
 }
 
+let openTicketKey = null;
 function renderTickets() {
-  $('#ccTickets').innerHTML = D.tickets.map((t) => `<div class="card"><b>${esc(t.key)} · ${esc(t.title)}</b><span class="pill ${t.status === 'closed' ? 'good' : 'warn'}">${esc(t.status)}</span>${hermesPill(t.hermes_result)}<p class="muted" style="font-size:12.5px">${esc(t.problem || '')}</p></div>`).join('') || '<div class="empty-state">No tickets yet.</div>';
+  $('#ccTickets').innerHTML = D.tickets.map((t) => `<button type="button" class="desk-row ${t.key === openTicketKey ? 'active' : ''}" data-ticket="${esc(t.key)}">
+      <b>${esc(t.key)} · ${esc(t.title)}</b>
+      <span class="pill ${t.status === 'closed' || t.status === 'resolved' ? 'good' : 'warn'}">${esc(t.status)}</span>
+      <span class="pill">${esc(t.priority || 'P3')}</span>
+    </button>`).join('') || '<div class="empty-state">No tickets yet.</div>';
+  $$('[data-ticket]').forEach((b) => b.onclick = () => { openTicketKey = b.dataset.ticket; renderTickets(); renderTicketDetail(); });
+  if (openTicketKey && !D.tickets.some((t) => t.key === openTicketKey)) openTicketKey = null;
+  renderTicketDetail();
+}
+
+function renderTicketDetail() {
+  const host = $('#ccTicketDetail');
+  const t = D.tickets.find((x) => x.key === openTicketKey);
+  if (!t) {
+    host.classList.add('empty');
+    host.innerHTML = '<span class="muted">Select a ticket to see its details and agent activity.</span>';
+    return;
+  }
+  host.classList.remove('empty');
+  const timeline = [
+    ['Opened', t.created_at],
+    t.assigned_agent ? ['Assigned', `to ${t.assigned_agent}`] : null,
+    t.hermes_result ? ['Sent to Hermes', t.hermes_result.ok ? `accepted by ${t.hermes_result.target || 'chief_of_staff'}` : (t.hermes_result.stderr || 'failed')] : null,
+    t.resolution ? ['Resolution', t.resolution] : null,
+    t.closed_at ? ['Closed', t.closed_at] : null,
+  ].filter(Boolean);
+  host.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div><h2 style="margin-bottom:4px">${esc(t.title)}</h2><span class="muted" style="font-size:12px">${esc(t.key)}</span></div>
+      <span class="pill ${t.status === 'closed' || t.status === 'resolved' ? 'good' : 'warn'}">${esc(t.status)}</span>
+    </div>
+    <p class="muted" style="margin-top:14px">${esc(t.problem || 'No details provided.')}</p>
+    <div class="formrow" style="margin-top:10px">
+      <label>Status
+        <select id="tdStatus">${['new', 'in_progress', 'resolved', 'closed'].map((s) => `<option value="${s}" ${s === t.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
+      </label>
+      <button class="secondary" id="tdSave">Save</button>
+    </div>
+    <h3 style="margin-top:18px">Activity</h3>
+    <div class="desk-timeline">
+      ${timeline.map(([label, val]) => `<div class="desk-timeline-item"><b>${esc(label)}</b> — ${esc(val || '')}</div>`).join('') || '<div class="desk-timeline-item muted">No activity recorded yet.</div>'}
+    </div>
+  `;
+  $('#tdSave').onclick = async () => {
+    await api('/api/ticket-update', { method: 'POST', body: JSON.stringify({ key: t.key, status: $('#tdStatus').value }) });
+    await load();
+  };
 }
 $('#addTicketBtn').onclick = async () => {
   const title = $('#newTicketTitle').value.trim();
@@ -226,17 +350,48 @@ function projectHermesLine(p) {
   if (r.ok) return `Sent to Hermes (${esc(r.target || 'chief_of_staff')}) — working.`;
   return `Hermes dispatch failed: ${esc(r.stderr || 'unknown error')}`;
 }
-function renderProjects() {
-  $('#ccProjects').innerHTML = D.projects.map((p) => `<div class="card" data-project="${p.id}" style="cursor:pointer">
+const PROJECT_COLS = [
+  { label: 'Planning', match: (p) => ['planning', 'active'].includes(p.status) },
+  { label: 'In Progress', match: (p) => p.status === 'in_progress' },
+  { label: 'Archived', match: (p) => p.status === 'archived' },
+];
+function projectPct(p) {
+  const tasks = D.tasks.filter((t) => t.project_id === p.id);
+  if (!tasks.length) return 0;
+  return Math.round((tasks.filter((t) => t.status === 'done').length / tasks.length) * 100);
+}
+function projectCardHTML(p) {
+  const pct = projectPct(p);
+  return `<div class="card" data-project="${p.id}" style="cursor:pointer">
     <b>${esc(p.name)}</b>
     <span class="pill">${esc(p.project_type)}</span>
     <span class="pill ${PROJECT_STATUS_PILL[p.status] || 'accent'}">${esc(p.status)}</span>
     <span class="pill">${agentCountForProject(p.id)} agent(s)</span>
     <p class="muted" style="font-size:12.5px;margin-top:8px">${esc((p.description || '').slice(0, 90)) || 'No description yet — click to add one.'}${(p.description || '').length > 90 ? '…' : ''}</p>
     <p class="muted" style="font-size:11px;margin-top:4px">${projectHermesLine(p)}</p>
-  </div>`).join('') || '<div class="empty-state">No projects yet.</div>';
+    <div class="project-progress-track"><div class="project-progress-fill" style="width:${pct}%"></div></div>
+    <p class="muted" style="font-size:10.5px;margin-top:4px;text-align:right">${pct}% of tasks done</p>
+  </div>`;
+}
+function renderProjects() {
+  $('#ccProjects').innerHTML = PROJECT_COLS.map((col) => {
+    const items = D.projects.filter(col.match);
+    return `<div>
+      <div class="projects-col-head"><span>${col.label}</span><span>${items.length}</span></div>
+      <div style="display:flex;flex-direction:column;gap:12px">${items.map(projectCardHTML).join('') || '<p class="muted" style="font-size:12px">None</p>'}</div>
+    </div>`;
+  }).join('');
   $$('[data-project]').forEach((c) => c.onclick = () => openProjectDialog(Number(c.dataset.project)));
   $('#newProjectAgents').innerHTML = D.agents.map((a) => `<option value="${esc(a.id)}">${esc(a.name)} — ${esc(a.department)}</option>`).join('') || '<option disabled>Activate a roster first</option>';
+
+  const counts = { total: D.projects.length, in_progress: D.projects.filter((p) => p.status === 'in_progress').length, archived: D.projects.filter((p) => p.status === 'archived').length, planning: D.projects.filter((p) => ['planning', 'active'].includes(p.status)).length };
+  $('#ccProjectsSide').innerHTML = `
+    <h3>Summary</h3>
+    <div class="stat-line"><span class="muted">Total</span><b>${counts.total}</b></div>
+    <div class="stat-line"><span class="muted">In progress</span><b>${counts.in_progress}</b></div>
+    <div class="stat-line"><span class="muted">Planning</span><b>${counts.planning}</b></div>
+    <div class="stat-line"><span class="muted">Archived</span><b>${counts.archived}</b></div>
+  `;
 }
 $('#addProjectBtn').onclick = async () => {
   const name = $('#newProjectName').value.trim();

@@ -103,6 +103,7 @@ function render() {
   renderHermes();
   renderModelSource();
   renderAgentChecklist();
+  renderVisualPanel();
 }
 
 function renderSystem() {
@@ -344,19 +345,6 @@ async function saveModelSource() {
   renderAgentChecklist();
 }
 
-$('#hermesTabFresh').onclick = () => {
-  $('#hermesTabFresh').classList.replace('ghost', 'secondary');
-  $('#hermesTabExisting').classList.replace('secondary', 'ghost');
-  $('#hermesFreshPanel').classList.remove('hidden');
-  $('#hermesExistingPanel').classList.add('hidden');
-};
-$('#hermesTabExisting').onclick = () => {
-  $('#hermesTabExisting').classList.replace('ghost', 'secondary');
-  $('#hermesTabFresh').classList.replace('secondary', 'ghost');
-  $('#hermesExistingPanel').classList.remove('hidden');
-  $('#hermesFreshPanel').classList.add('hidden');
-};
-
 /* ---------------- agent setup checklist ---------------- */
 function resolveAgentModel(agent) {
   const role = agent.model_capability || 'general';
@@ -416,6 +404,66 @@ function goToStep(n) {
   $('#backBtn').disabled = step === 0;
   $('#wizardNav').classList.toggle('hidden', step === TOTAL_STEPS - 1);
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  renderVisualPanel();
+}
+
+/* ---------------- right-hand visual panel — mirrors whatever the left side is
+   configuring right now, live, per step ---------------- */
+function renderVisualPanel() {
+  const host = $('#visualPanel');
+  if (!host) return;
+  const sys = (S.scan && S.scan.system) || {};
+  const panels = [
+    // 0: System
+    () => visualHTML('This machine', 'Dispatch scans hardware once, then only reacts to what changes.', [
+      ['🖥️', sys.chip || sys.machine || 'Detecting…', 'Chip / model'],
+      ['🧠', (sys.ram_gb || '?') + ' GB', 'Unified memory'],
+      ['💾', (sys.disk_free_gb || '?') + ' GB free', 'Storage headroom'],
+      ['🦙', `${(S.scan.models || []).length} Ollama model(s)`, 'Already installed'],
+    ]),
+    // 1: Deployment
+    () => visualHTML('What you\'re shipping', 'Every target you select shapes the roster Dispatch builds next.', selectedTypes.length
+      ? selectedTypes.map((id) => [TYPE_META[id]?.icon || '📦', TYPE_META[id]?.name || id, TYPE_META[id]?.desc || ''])
+      : [['🧭', 'Nothing selected yet', 'Pick at least one deployment target on the left']]),
+    // 2: Tools
+    () => visualHTML('Developer tools', 'Anything already on your PATH is left exactly as it is.', (S.scan.tools || []).slice(0, 6).map((t) => [t.installed ? '✅' : '⬜', t.name || t.id, t.installed ? 'Installed' : 'Will be installed'])),
+    // 3: Models
+    () => visualHTML('Model plan', 'What Dispatch will run locally, sized to this Mac\'s RAM.', [
+      ['🧠', (S.recommendation && S.recommendation.general && S.recommendation.general.id) || '—', 'General role'],
+      ['🛠️', (S.recommendation && S.recommendation.coder && S.recommendation.coder.id) || '—', 'Coder role'],
+      ['🔎', (S.recommendation && S.recommendation.embedding && S.recommendation.embedding.id) || '—', 'Embedding role'],
+    ]),
+    // 4: Organization
+    () => visualHTML('Your organization', 'Size and complexity are derived automatically — not a dial you manage.', [
+      ['🏢', (S.organization && S.organization.complexity) || '—', 'Complexity tier'],
+      ['👥', `${(S.organization && S.organization.agents && S.organization.agents.length) || 0} role(s)`, 'Agents in the roster'],
+      ['🎯', (S.organization && (S.organization.project_types || []).join(' + ')) || '—', 'Deployment coverage'],
+    ]),
+    // 5: Integration
+    () => visualHTML('Hermes integration', 'Configured automatically on Finish — nothing to paste by hand.', [
+      ['🤖', modelSource === 'local' ? 'Local models' : modelSource === 'frontier' ? 'Frontier models' : 'Hybrid', 'Model source'],
+      ['🔌', (S.scan.harnesses || []).filter((h) => h.installed).length + ' detected', 'Agent harnesses'],
+      ['🧩', 'filesystem · context7 · playwright · penpot', 'MCP tools wired in'],
+    ]),
+    // 6: Finish
+    () => visualHTML('Ready to go', 'One click configures Hermes and opens the Command Center.', [
+      ['✅', `${(S.organization && S.organization.agents && S.organization.agents.length) || 0} agents`, 'About to be activated'],
+      ['🚀', 'Command Center', 'Where you\'ll manage everything next'],
+    ]),
+  ];
+  host.innerHTML = (panels[step] || panels[0])();
+}
+
+function visualHTML(heading, sub, facts) {
+  return `<div class="visual-eyebrow">Step ${step + 1} of ${TOTAL_STEPS}</div>
+    <div class="visual-heading">${esc(heading)}</div>
+    <div class="visual-sub">${esc(sub)}</div>
+    <div class="visual-body">
+      ${facts.map(([icon, title, sub2]) => `<div class="visual-fact">
+        <div class="vf-icon">${icon}</div>
+        <div><b>${esc(title)}</b><span>${esc(sub2)}</span></div>
+      </div>`).join('')}
+    </div>`;
 }
 
 function canAdvance() {
@@ -441,18 +489,7 @@ $('#generateIntegration').onclick = async () => {
 $('#finishBtn').onclick = async () => {
   $('#finishBtn').disabled = true;
   $('#finishBtn').textContent = 'Activating roster…';
-  // Open the tab synchronously, still inside the click's user gesture — Safari
-  // (and other browsers) silently block window.open() once an `await` has run,
-  // even a moment earlier in the same handler.
-  const win = window.open('about:blank', '_blank');
   const r = await api('/api/apply-org', { method: 'POST', body: '{}' });
-  let openNote;
-  if (win) {
-    win.location.href = '/command-center';
-    openNote = 'Command Center opened in a new tab. This setup tab is safe to close.';
-  } else {
-    openNote = 'Your browser blocked the pop-up — click "Open Command Center" below (this tab will stay open).';
-  }
 
   let hermesNote = '';
   const hp = r && r.hermes_profiles;
@@ -483,15 +520,12 @@ $('#finishBtn').onclick = async () => {
     }
   }
 
-  const fallbackLink = win ? '' : ' <a href="/command-center" target="_blank">Open Command Center</a>';
-  $('#finishNote').innerHTML = esc(openNote + hermesNote) + fallbackLink;
-  $('#finishBtn').textContent = 'Command Center launched ✓';
-  if (win) {
-    setTimeout(() => { try { window.close(); } catch (e) {} }, 1200);
-  } else {
-    $('#finishBtn').disabled = false;
-    $('#finishBtn').textContent = 'Launch Command Center →';
-  }
+  $('#finishBtn').textContent = 'Opening Command Center…';
+  // Hand the summary to the Command Center via sessionStorage (survives an
+  // in-tab navigation, unlike a variable) so it can show a one-time banner
+  // instead of making the wizard try to display it in a tab about to leave.
+  try { sessionStorage.setItem('dispatch_setup_summary', hermesNote.trim()); } catch (e) {}
+  window.location.href = '/command-center';
 };
 
 goToStep(0);

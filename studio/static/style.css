@@ -117,6 +117,18 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:var(--accent);
 .enter{animation:fadeUp .35s cubic-bezier(.2,.8,.2,1) both}
 .enter-1{animation-delay:.03s}.enter-2{animation-delay:.07s}.enter-3{animation-delay:.11s}.enter-4{animation-delay:.15s}
 
+/* ---------- premium page/view transitions (wizard steps + Command Center views) ---------- */
+@keyframes viewIn{from{opacity:0;transform:translateY(14px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+.wstep{animation:viewIn .38s cubic-bezier(.2,.8,.2,1) both}
+.cc-view.active{animation:viewIn .32s cubic-bezier(.2,.8,.2,1) both}
+.visual-eyebrow,.visual-heading,.visual-sub,.visual-fact{animation:viewIn .42s cubic-bezier(.2,.8,.2,1) both}
+.visual-sub{animation-delay:.04s}
+.visual-fact:nth-child(1){animation-delay:.08s}
+.visual-fact:nth-child(2){animation-delay:.13s}
+.visual-fact:nth-child(3){animation-delay:.18s}
+.visual-fact:nth-child(4){animation-delay:.23s}
+.visual-fact:nth-child(5){animation-delay:.28s}
+
 /* ---------- progress bars (rescan / installs / model pulls) ---------- */
 .progress-wrap{margin:10px 0 4px;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius-md);background:linear-gradient(180deg,#0e1420,#0b0f17)}
 .progress-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px}
@@ -251,3 +263,94 @@ pre{white-space:pre-wrap;background:#080b0f;border:1px solid var(--line);border-
 @media(max-width:800px){
   .type-grid{grid-template-columns:repeat(2,1fr)}
 }
+
+/* ---------- Wizard: split-screen layout (fields left, live visual right) ---------- */
+body.wizard{padding-bottom:0}
+.wizard-split{display:grid;grid-template-columns:minmax(380px,480px) 1fr;min-height:100vh;align-items:stretch}
+.wizard-form-col{padding:30px 38px 70px;overflow-y:auto;max-height:100vh}
+.wizard-visual-col{
+  background:linear-gradient(165deg,#0d1730,#0a0f1f 55%,#090c16);
+  border-left:1px solid var(--line);padding:42px 40px;position:sticky;top:0;height:100vh;
+  overflow-y:auto;display:flex;flex-direction:column;
+}
+.wizard-visual-col::before{
+  content:"";position:fixed;top:0;right:0;width:calc(100% - 380px);height:100vh;
+  background:radial-gradient(650px 420px at 85% -10%, rgba(110,168,255,.14), transparent 60%),
+             radial-gradient(520px 400px at 10% 100%, rgba(155,123,255,.12), transparent 55%);
+  pointer-events:none;z-index:0;
+}
+.wizard-visual-col > *{position:relative;z-index:1}
+.visual-eyebrow{color:var(--accent-3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.visual-heading{font-size:23px;font-weight:700;letter-spacing:-.015em;margin-bottom:10px;color:#f2f6fc}
+.visual-sub{color:var(--muted);font-size:13px;max-width:440px;margin-bottom:28px}
+.visual-body{flex:1;display:flex;flex-direction:column;gap:12px}
+.visual-fact{display:flex;align-items:center;gap:12px;background:rgba(15,20,32,.6);border:1px solid var(--line);border-radius:var(--radius-md);padding:13px 15px}
+.visual-fact .vf-icon{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+.visual-fact b{display:block;font-size:13.5px}
+.visual-fact span{color:var(--muted);font-size:11.5px}
+@media(max-width:920px){.wizard-split{grid-template-columns:1fr}.wizard-visual-col{display:none}}
+
+/* ---------- unobtrusive GitHub link + star prompt ---------- */
+.gh-link{position:fixed;bottom:16px;right:18px;display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);
+  background:rgba(10,14,22,.8);border:1px solid var(--line);border-radius:99px;padding:7px 13px;backdrop-filter:blur(8px);
+  z-index:60;text-decoration:none;transition:all .15s ease}
+.gh-link:hover{color:var(--text);border-color:#334761;transform:translateY(-1px)}
+.gh-link svg{width:13px;height:13px}
+
+/* ---------- Command Center: dashboard stat row + settings link ---------- */
+.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:22px}
+.cc-settings-link{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:9px;color:var(--muted-2);font-size:12px;text-decoration:none;transition:all .12s ease}
+.cc-settings-link:hover{background:#141b27;color:var(--text)}
+
+/* ---------- Kanban + right-side project completion panel ---------- */
+.kanban-layout{display:grid;grid-template-columns:1fr 270px;gap:16px;align-items:start}
+.kanban-side{background:linear-gradient(180deg,var(--card),#10141c);border:1px solid var(--line);border-radius:var(--radius-md);padding:20px 18px;position:sticky;top:14px}
+.progress-ring{width:104px;height:104px;margin:4px auto 16px;position:relative}
+.progress-ring svg{transform:rotate(-90deg);width:100%;height:100%}
+.progress-ring circle{fill:none;stroke-width:8}
+.progress-ring .ring-track{stroke:#1a212c}
+.progress-ring .ring-fill{stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset .5s ease}
+.progress-ring .ring-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:21px;font-weight:700}
+.kanban-side .stat-line{display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--line-soft)}
+.kanban-side .stat-line:last-child{border-bottom:none}
+.kanban-side select{width:100%;margin-bottom:8px}
+@media(max-width:1100px){.kanban-layout{grid-template-columns:1fr}.kanban-side{position:static}}
+
+/* ---------- Service Desk: ticket list + detail side panel ---------- */
+.desk-layout{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:start}
+.desk-list{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 200px);overflow-y:auto;padding-right:4px}
+.desk-row{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:11px 13px;cursor:pointer;transition:all .12s ease;text-align:left;width:100%}
+.desk-row:hover{border-color:#334761}
+.desk-row.active{border-color:var(--accent);box-shadow:var(--shadow-glow)}
+.desk-row b{display:block;font-size:12.5px;margin-bottom:4px}
+.desk-detail{background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--line);border-radius:var(--radius-lg);padding:22px;min-height:340px}
+.desk-detail.empty{display:flex;align-items:center;justify-content:center;color:var(--muted-2);text-align:center}
+.desk-timeline{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.desk-timeline-item{border-left:2px solid var(--line);padding-left:12px;font-size:12.5px;color:var(--muted)}
+.desk-timeline-item b{color:var(--text)}
+@media(max-width:1000px){.desk-layout{grid-template-columns:1fr}}
+
+/* ---------- Agents: org-chart tree with live activity ---------- */
+.orgchart{display:flex;flex-direction:column;align-items:center;gap:30px;padding:24px 10px;overflow-x:auto}
+.orgchart-dept{display:flex;flex-direction:column;align-items:center;gap:12px}
+.orgchart-dept-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted-2);font-weight:700}
+.orgchart-row{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+.orgchart-node{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 15px;min-width:150px;text-align:center;transition:all .25s ease;position:relative}
+.orgchart-node b{display:block;font-size:12.5px}
+.orgchart-node .role{color:var(--muted);font-size:10.5px;margin-top:2px}
+.orgchart-node .activity{color:var(--muted-2);font-size:10.5px;margin-top:6px;min-height:13px}
+.orgchart-node.working{border-color:var(--accent);box-shadow:0 0 0 1px rgba(110,168,255,.5),var(--shadow-glow);animation:pulseRing 1.5s ease-out infinite}
+.orgchart-node.just-dispatched{animation:delegateFlash 1.8s ease-out 1}
+@keyframes delegateFlash{0%{box-shadow:0 0 0 0 rgba(155,123,255,.75)}70%{box-shadow:0 0 0 16px rgba(155,123,255,0)}100%{box-shadow:0 0 0 0 rgba(155,123,255,0)}}
+.orgchart-root{background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#0b1020;border-radius:12px;padding:10px 18px;font-weight:700;font-size:12.5px;margin-bottom:6px}
+
+/* ---------- Projects: card-grid with status columns + summary panel ---------- */
+.projects-layout{display:grid;grid-template-columns:1fr 250px;gap:16px;align-items:start}
+.projects-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.projects-col-head{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between}
+.project-progress-track{height:6px;border-radius:99px;background:#0a0e15;border:1px solid var(--line-soft);overflow:hidden;margin-top:8px}
+.project-progress-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent-3),var(--accent))}
+.projects-side{background:linear-gradient(180deg,var(--card),#10141c);border:1px solid var(--line);border-radius:var(--radius-md);padding:18px;position:sticky;top:14px}
+.projects-side .stat-line{display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;border-bottom:1px solid var(--line-soft)}
+.projects-side .stat-line:last-child{border-bottom:none}
+@media(max-width:1100px){.projects-layout{grid-template-columns:1fr}.projects-side{position:static}}

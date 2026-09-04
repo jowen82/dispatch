@@ -197,6 +197,14 @@ class App:
         projects = self.state.rows('SELECT * FROM projects ORDER BY id DESC')
         for pr in projects:
             pr['hermes_result'] = hermes_bridge.check_result(self.home, pr['slug'], 'project', pr['slug'])
+        # "working" only means "Dispatch sent this agent something recently" —
+        # there's no way to know when Hermes actually finishes a turn, so a
+        # status written by _dispatch_to_hermes self-expires back to idle here
+        # rather than sticking forever the moment Hermes goes quiet.
+        agents = self.state.rows(
+            "SELECT *, (status='working' AND (julianday('now') - julianday(updated_at)) * 86400 <= 120) AS recently_active "
+            "FROM agents ORDER BY department,name"
+        )
         return {
             'projects': projects,
             'tasks': tasks,
@@ -204,7 +212,7 @@ class App:
             'approvals': approvals,
             'files': files,
             'events': self.state.rows('SELECT * FROM events ORDER BY id DESC LIMIT 100'),
-            'agents': self.state.rows('SELECT * FROM agents ORDER BY department,name'),
+            'agents': agents,
             'project_agents': self.state.rows('SELECT * FROM project_agents'),
             'organization': self.org,
             'recommendation': self.rec,
@@ -312,6 +320,32 @@ class App:
             })
         return {'ok': True}
 
+    def update_ticket(self, data):
+        key = data.get('key')
+        if not key:
+            return {'ok': False, 'stderr': 'Missing ticket key'}
+        fields, args = [], []
+        for col in ('status', 'assigned_agent', 'priority', 'title', 'problem', 'root_cause', 'resolution', 'verification'):
+            if col in data:
+                fields.append(f"{col}=?")
+                args.append(data[col])
+        if not fields:
+            return {'ok': False, 'stderr': 'Nothing to update'}
+        if data.get('status') in ('closed', 'resolved'):
+            fields.append("closed_at=CURRENT_TIMESTAMP")
+        args.append(key)
+        self.state.exec(f"UPDATE tickets SET {','.join(fields)} WHERE key=?", tuple(args))
+        row = self.state.rows('SELECT * FROM tickets WHERE key=?', (key,))
+        if row:
+            t = row[0]
+            self._dispatch_to_hermes(t['project_id'], 'ticket', key, {
+                'title': t['title'], 'status': t['status'], 'priority': t['priority'],
+                'agent': t['assigned_agent'],
+                'prompt': f"Ticket '{t['title']}' was updated: status is now {t['status']}"
+                          f"{', assigned to ' + t['assigned_agent'] if t['assigned_agent'] else ''}.",
+            })
+        return {'ok': True}
+
     def _dispatch_to_hermes(self, project_id, kind, key, payload):
         """Mirror a Command Center action to Hermes: a durable inbox file (audit trail,
         see hermes_bridge.py) plus, when the `hermes` CLI is available, a real
@@ -331,6 +365,16 @@ class App:
         else:
             result = {'ok': False, 'stderr': 'hermes CLI not found on PATH — queued in hermes-inbox/ only.'}
         result['target'] = target
+        if result.get('ok'):
+            # Real signal for the Agents org-chart view: this is the one place
+            # Dispatch actually knows an agent was just handed something to do.
+            # "working" only sticks for a short window (read back in cc()) —
+            # Dispatch has no way to know when Hermes actually finishes a turn.
+            short = (kind[:1].upper() + kind[1:]) + f' {key}'
+            self.state.exec(
+                "UPDATE agents SET status='working', activity=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (short, target),
+            )
         try:
             hermes_bridge.write_result(self.home, slug, kind, key, result)
         except Exception as e:
@@ -689,6 +733,8 @@ class H(BaseHTTPRequestHandler):
                 'prompt': f"New {priority} ticket '{title}': {problem or 'no details provided.'}",
             })
             return self.sendj({'ok': True, 'id': i, 'key': key})
+        if p == '/api/ticket-update':
+            return self.sendj(APP.update_ticket(data))
 
         if p == '/api/approval':
             project_id = int(data.get('project_id') or APP.state.ensure_default_project())

@@ -1,5 +1,5 @@
-78720010e7a093b4ea7cd3e695d8a5afa9208d47d241a122bf1e0a31f5a53cb2  ./README.md
-967d9afb101346667166f2e76e81910bc190488d7d41d50ca0072e9d92f00e32  ./VERSION
+45ec3c8e7ec16f5cfd1b74b3f006ac6bce6922b553a44f3edf4f13a013af6199  ./README.md
+a66780da23103beaf12432b418508966b31a2a3a787f9468a5b6cdaa8667c1ef  ./VERSION
 ef360a46f28bbf3e69cea5e6c00e67df3ae2773bac2256134e0181c95895d699  ./bootstrap.command
 316f0e63b111abdac93f73bcee1df93a3f9767255abd14bc4b695bb5ad8ad22e  ./bootstrap.ps1
 869cb0a7e17b225eeecd03c93dfa26e25c33eca5925a54dc97811926f831144f  ./docs/ARCHITECTURE.md
@@ -8,7 +8,7 @@ df7b74ad14bc9daf231fafde648b7dca4e8c124163a23f8ee8294e1b4e85430e  ./run.ps1
 91447944015cec709e8aa7655f7e9d64e1e4508e7023a57fe3746911c0fc6fed  ./studio/__init__.py
 a57e6d52c2923f5321b9ef397a5e3bd9f9984f25ff9108b0e3615afab93d8784  ./studio/actions.py
 f78f787cd25aa293845daeea13aa09e3e2fb7b01b2f2e26205681ee828f4134b  ./studio/agent_planner.py
-ee907eb4a41497df319baab58eaf179b14e48e3cef37283ecf57fc41c083d276  ./studio/app.py
+e8733f4c844e8a9bb3915a59b1d561b7f84a19b9861009ac1ab910c6f9ba42cb  ./studio/app.py
 04267e777a36a02b95b03a96bf34f91a5c7ab209a7ef904353008b4912b3dcf9  ./studio/catalogs/agents.json
 6dacf9676f529df186d89ec557940ba7f470a5fc556550e8c3bf6decb7b854a7  ./studio/catalogs/models.json
 f4bed25a029d81d9328d24ede9ec6fc5408f070475298805e4fac8f687c2f85c  ./studio/catalogs/tools.json
@@ -28,10 +28,10 @@ eee3966b13f003a86536906cb76fdf416859c5527d0dc013190ddb030749b027  ./studio/repor
 cfc7f4fd892d1b98cf5fdbc8d7a9b8e328e66a63a0490adef012be9b39160659  ./studio/scripts/security_gate.sh
 c6a5c3c015736656adf2c0ea61a94e851b634816d48b6ca5326c8dba3d81382a  ./studio/state.py
 d2c6fff0d1e6996b74448a393f47ad3d6925ba6c0f86ed21dbe7dfe0a6ba6f44  ./studio/static/app.js
-79f3cc051f34c17b5946c0f0f3a9662189a3580d2ac65009857b328fa5a07375  ./studio/static/command-center.html
-878e0662fff72ac16f0e1898ef6185f66f90306194d72174969092f4bce2fed3  ./studio/static/command.js
-02d382feaea164254a50d5469c8a44a8bd3465f4730b7dd52f843fd50046311c  ./studio/static/index.html
-b1f979ccbbd29605f4ca1146dae4fd129fb02a80d2c30a132e508558401beed0  ./studio/static/setup.js
-01ed1ff654b660c74a1e79c60162507ee43ea5c9a1bdd574f9b99b4e0f6bf651  ./studio/static/style.css
+8b2979b47219f10c2f07bdd4e4972f5838da749b0a271bc03c6958ade09746a3  ./studio/static/command-center.html
+74deeb05511987f30e8a3782239e03f235def5ac01bc85978aa54912e5ed6c1f  ./studio/static/command.js
+4b1c8e3f82cd8c1c43e6edebceaee64440a8e355344820287340b012c5c7728d  ./studio/static/index.html
+566ea0cb139970e2445978bdfcab58748d977160787c802b50f2b23d8d7f9054  ./studio/static/setup.js
+dafb4bb15e8be617eb7def47574c6650e296153c89bd37284e62f55509296e51  ./studio/static/style.css
 7d167bf2984abfe8741572249331822b1e0734c5b81c81d0e1fd82864a10fa21  ./tests/test_agent_planner.py
 408f774e63c9af46bac905b7bc860b493051f523f944c633e52b6c18f1efe62e  ./tests/test_recommender.py
